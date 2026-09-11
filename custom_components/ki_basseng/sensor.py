@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -236,4 +237,11 @@ class KiBassengSensor(KiBassengEntity, SensorEntity):
     def extra_state_attributes(self) -> dict | None:
         if self.entity_description.attrs is None:
             return None
-        return self.entity_description.attrs(self.data, self.coordinator)
+        attrs = dict(self.entity_description.attrs(self.data, self.coordinator))
+        if self.entity_description.key == "pumpemodus":
+            # Markør slik kortet finner riktig sensor selv om entity_id har
+            # fått en _2-hale fordi en gammel YAML-sensor tok navnet først.
+            objekt = self.entity_id.split(".", 1)[-1]
+            attrs["integrasjon"] = DOMAIN
+            attrs["prefiks"] = re.sub(r"_pumpemodus(_\d+)?$", "", objekt)
+        return attrs
