@@ -1,0 +1,118 @@
+# Bubble-card pop-up (#badebasseng) bygget rundt ki-basseng-card.
+# Erstatter hele den gamle popupen; hurtigknappene nederst beholdes.
+type: custom:bubble-card
+card_type: pop-up
+name: Badebasseng
+icon: mdi:pool
+hash: '#badebasseng'
+is_sidebar_hidden: true
+bg_blur: '5'
+shadow_opacity: '20'
+bg_opacity: '98'
+margin_top_mobile: 50px
+margin_top_desktop: 50px
+card_layout: large
+button_type: name
+styles: |+
+  .bubble-pop-up-container {
+    --vertical-stack-card-gap: 12px !important;
+  }
+  #header-container > div > div { background: var(--gray000) !important; }
+  #header-container > button { background: none; }
+  .bubble-name { font-size: 30px !important; font-weight: 500; padding: 8px 0 !important; }
+  .bubble-close-button { background-color: var(--gray200) !important; border-radius: 50%; }
+cards:
+  - type: custom:gap-card
+    height: 0
+
+  - type: custom:ki-basseng-card
+    tittel: null
+    faner:
+      - oversikt
+      - sirkulasjon
+      - spreder
+      - innstillinger
+
+  # Hurtigknapper: lys, pumpe, varmepumpe, stillemodus, stikkontakt
+  - square: false
+    columns: 5
+    type: grid
+    cards:
+      - type: custom:button-card
+        entity: light.bassenglys
+        aspect_ratio: 1/1
+        show_name: false
+        icon: mdi:lightbulb-outline
+        state:
+          - value: 'on'
+            icon: mdi:lightbulb-on
+            styles:
+              card: [background: var(--active-big)]
+              icon: [color: var(--black)]
+        tap_action: {action: toggle}
+        styles:
+          icon: [color: inherit]
+          card: [border-radius: 24px, background: var(--gray200)]
+      - type: custom:button-card
+        entity: switch.bassengpumpe
+        aspect_ratio: 1/1
+        show_name: false
+        icon: mdi:pump
+        state:
+          - value: 'on'
+            styles:
+              card: [background: var(--active-big)]
+              icon: [color: var(--black)]
+        tap_action: {action: toggle}
+        styles:
+          icon: [color: inherit]
+          card: [border-radius: 24px, background: var(--gray200)]
+      - type: custom:button-card
+        entity: climate.basseng_bassengvarmepumpe
+        aspect_ratio: 1/1
+        show_name: false
+        icon: mdi:power
+        state:
+          - value: heat
+            styles:
+              card: [background: var(--active-big)]
+              icon: [color: var(--black)]
+          - value: auto
+            styles:
+              card: [background: var(--active-big)]
+              icon: [color: var(--black)]
+        tap_action: {action: toggle}
+        styles:
+          icon: [color: inherit]
+          card: [border-radius: 24px, background: var(--gray200)]
+      - type: custom:button-card
+        entity: switch.baseng_basengvarmepumpe_stillemodus
+        aspect_ratio: 1/1
+        show_name: false
+        icon: mdi:volume-off
+        state:
+          - value: 'on'
+            styles:
+              card: [background: var(--active-big)]
+              icon: [color: var(--black)]
+        tap_action: {action: toggle}
+        styles:
+          icon: [color: inherit]
+          card: [border-radius: 24px, background: var(--gray200)]
+      - type: custom:button-card
+        entity: switch.baseng_stikkontakt
+        aspect_ratio: 1/1
+        show_name: false
+        icon: mdi:power-socket-eu
+        state:
+          - value: 'on'
+            styles:
+              card: [background: var(--active-big)]
+              icon: [color: var(--black)]
+        tap_action: {action: toggle}
+        styles:
+          icon: [color: inherit]
+          card: [border-radius: 24px, background: var(--gray200)]
+
+  - type: custom:gap-card
+    height: 36

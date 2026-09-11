@@ -1,0 +1,174 @@
+"""Tallinnstillinger for KI Basseng."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from homeassistant.components.number import (
+    NumberEntity,
+    NumberEntityDescription,
+    NumberMode,
+)
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory, UnitOfPower, UnitOfTime
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .const import DOMAIN
+from .coordinator import KiBassengCoordinator
+from .entity import KiBassengEntity
+
+
+@dataclass(frozen=True, kw_only=True)
+class KiNumberDescription(NumberEntityDescription):
+    setting: str
+
+
+NUMBERS: tuple[KiNumberDescription, ...] = (
+    KiNumberDescription(
+        key="omsetninger_mal",
+        name="Omsetninger per døgn",
+        icon="mdi:autorenew",
+        setting="turnovers",
+        native_min_value=0.25,
+        native_max_value=4,
+        native_step=0.25,
+        native_unit_of_measurement="x",
+        mode=NumberMode.SLIDER,
+    ),
+    KiNumberDescription(
+        key="vedlikeholdspuls",
+        name="Vedlikeholdspuls",
+        icon="mdi:timer-play-outline",
+        setting="pulse_minutes",
+        native_min_value=0,
+        native_max_value=30,
+        native_step=1,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        mode=NumberMode.SLIDER,
+    ),
+    KiNumberDescription(
+        key="minste_kjoretid",
+        name="Minste kjøretid",
+        icon="mdi:timer-lock-outline",
+        setting="min_runtime",
+        native_min_value=0,
+        native_max_value=60,
+        native_step=5,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiNumberDescription(
+        key="overstyring_varighet",
+        name="Manuell overstyring varer",
+        icon="mdi:hand-back-right-outline",
+        setting="override_minutes",
+        native_min_value=0,
+        native_max_value=480,
+        native_step=15,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiNumberDescription(
+        key="dagtimer",
+        name="Dagtimer i planen",
+        icon="mdi:white-balance-sunny",
+        setting="daytime_hours",
+        native_min_value=0,
+        native_max_value=6,
+        native_step=1,
+        native_unit_of_measurement="t",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiNumberDescription(
+        key="varmevindu_start",
+        name="Varmevindu start",
+        icon="mdi:weather-sunset-up",
+        setting="heat_start",
+        native_min_value=0,
+        native_max_value=23,
+        native_step=1,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiNumberDescription(
+        key="varmevindu_slutt",
+        name="Varmevindu slutt",
+        icon="mdi:weather-sunset-down",
+        setting="heat_end",
+        native_min_value=0,
+        native_max_value=24,
+        native_step=1,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiNumberDescription(
+        key="pumpe_basislast",
+        name="Pumpe basislast",
+        icon="mdi:flash-outline",
+        setting="pump_baseline",
+        native_min_value=50,
+        native_max_value=5000,
+        native_step=10,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiNumberDescription(
+        key="spreder_varighet",
+        name="Spreder varighet",
+        icon="mdi:timer-sand",
+        setting="sprinkler_duration",
+        native_min_value=1,
+        native_max_value=60,
+        native_step=1,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        mode=NumberMode.SLIDER,
+    ),
+    KiNumberDescription(
+        key="spreder_intervall",
+        name="Spreder intervall",
+        icon="mdi:repeat",
+        setting="sprinkler_interval",
+        native_min_value=0,
+        native_max_value=24,
+        native_step=1,
+        native_unit_of_measurement="t",
+    ),
+    KiNumberDescription(
+        key="spreder_maks",
+        name="Spreder maks per døgn",
+        icon="mdi:water-alert-outline",
+        setting="sprinkler_daily_max",
+        native_min_value=0,
+        native_max_value=240,
+        native_step=10,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        entity_category=EntityCategory.CONFIG,
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
+    coordinator: KiBassengCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities(KiBassengNumber(coordinator, d) for d in NUMBERS)
+
+
+class KiBassengNumber(KiBassengEntity, NumberEntity):
+    entity_description: KiNumberDescription
+
+    def __init__(
+        self, coordinator: KiBassengCoordinator, description: KiNumberDescription
+    ) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
+
+    @property
+    def native_value(self) -> float:
+        return float(
+            self.coordinator.settings.get(self.entity_description.setting, 0) or 0
+        )
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_setting(
+            self.entity_description.setting, float(value)
+        )

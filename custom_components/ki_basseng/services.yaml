@@ -1,0 +1,47 @@
+start_spreder:
+  name: Start spreder
+  description: Åpner vannventilen og lar sprederen gå i et gitt antall minutter.
+  fields:
+    minutter:
+      name: Minutter
+      description: Varighet. Bruker innstilt varighet hvis den står tom.
+      required: false
+      example: 15
+      selector:
+        number:
+          min: 1
+          max: 120
+          unit_of_measurement: min
+
+stopp_spreder:
+  name: Stopp spreder
+  description: Stenger vannventilen med en gang.
+
+boost:
+  name: Boost sirkulasjon
+  description: Kjører sirkulasjonspumpen uavhengig av plan og pris.
+  fields:
+    minutter:
+      name: Minutter
+      description: Hvor lenge boosten varer.
+      default: 30
+      selector:
+        number:
+          min: 5
+          max: 240
+          unit_of_measurement: min
+
+sett_profil:
+  name: Sett driftsprofil
+  description: Bytter profil og setter omsetningsmål og vedlikeholdspuls.
+  fields:
+    profil:
+      name: Profil
+      required: true
+      selector:
+        select:
+          options:
+            - eco
+            - balansert
+            - badeklar
+            - ferie

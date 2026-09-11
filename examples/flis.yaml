@@ -1,0 +1,4 @@
+# Liten flis til forsiden: bare oversiktsfanen.
+type: custom:ki-basseng-card
+tittel: Basseng
+faner: [oversikt]

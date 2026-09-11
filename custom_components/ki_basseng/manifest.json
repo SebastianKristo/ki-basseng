@@ -1,0 +1,13 @@
+{
+  "domain": "ki_basseng",
+  "name": "KI Basseng",
+  "codeowners": ["@SebastianKristo"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/SebastianKristo/ki-basseng",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/SebastianKristo/ki-basseng/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}
