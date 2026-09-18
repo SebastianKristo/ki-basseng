@@ -1,0 +1,198 @@
+# Badebasseng-popupen, i samme form som server-popupen.
+#
+# Statuskort øverst — «Bassenget har det bra», eller hva som feiler — og så fem fliser
+# der hver åpner sin egen del over rutenettet. Ingen rulling, og samme formspråk som
+# resten av dashbordet.
+#
+# En av sjekkene er ny: varmepumpa hopper selv i «auto» av og til, og da varmer den ikke
+# nødvendigvis. Står den i auto, sier statuskortet det — og bryteren «Tving til heat»
+# under Varmepumpe-flisen setter den tilbake automatisk.
+#
+# Entitetsnavnene under `sensor.ki_basseng_*` og `switch.ki_basseng_*` er fra
+# integrasjonen; sjekk dem mot Utviklerverktøy hvis noe står tomt.
+
+type: custom:bubble-card
+card_type: pop-up
+name: Badebasseng
+icon: mdi:pool
+hash: '#badebasseng'
+is_sidebar_hidden: true
+bg_blur: '5'
+shadow_opacity: '20'
+bg_opacity: '98'
+margin_top_mobile: 50px
+margin_top_desktop: 50px
+card_layout: large
+button_type: name
+styles: ".bubble-pop-up-container {\n  --vertical-stack-card-gap: 0px !important;\n}\n#header-container > div > div { background: var(--gray000) !important; }\n#header-container > button { background: none;\
+  \ }\n.icon-container { background-color: var(--gray1000) !important; }\n.icon-container > ha-icon { color: var(--black) !important; opacity: 1 !important; }\n.bubble-icon { --mdc-icon-size: 24px !important;\
+  \ }\n.bubble-name {\n  font-size: 30px !important;\n  font-weight: 500;\n  line-height: 1.4 !important;\n  padding: 8px 0 !important;\n}\n.bubble-close-button { background-color: var(--gray200) !important;\
+  \ border-radius: 50%; }\n"
+cards:
+- type: custom:gap-card
+  height: 0
+- type: custom:ki-status-card
+  navn: Badebasseng
+  ikon: mdi:pool
+  ok_tekst: Bassenget har det bra
+  sjekker:
+  - entity: sensor.ki_basseng_status
+    ok:
+    - Klar
+    - Sirkulerer
+    - Varmer
+    - Hviler
+    feil: 'Status: {verdi}'
+  - entity: binary_sensor.ki_basseng_frostfare
+    ok: 'off'
+    feil: Frostfare — pumpa går for å hindre frost
+    alvor: rod
+  - entity: climate.basseng_bassengvarmepumpe
+    ok:
+    - heat
+    - 'off'
+    feil: Varmepumpa står i {verdi}, ikke heat
+  - entity: switch.baseng_stikkontakt
+    ok: 'on'
+    feil: Stikkontakten er av
+  tall:
+  - navn: Vann
+    entity: sensor.ki_basseng_vanntemperatur
+    enhet: °
+    desimaler: 1
+  - navn: Mål
+    entity: number.ki_basseng_maltemperatur
+    enhet: °
+    desimaler: 0
+  - navn: Effekt
+    entity: sensor.ki_basseng_effekt_na
+    enhet: ' W'
+    desimaler: 0
+  - navn: I dag
+    entity: sensor.ki_basseng_kjoretid_i_dag
+    enhet: ' t'
+    desimaler: 1
+- type: custom:gap-card
+  height: 10
+- type: custom:ki-rack-card
+  tittel: Badebasseng
+  kolonner: 2
+  enheter:
+  - navn: Bassenget
+    ikon: mdi:pool
+    status: switch.bassengpumpe
+    tall: sensor.ki_basseng_vanntemperatur
+    tall_enhet: °
+    tall_desimaler: 1
+    nokkel: sensor.ki_basseng_status
+    nokkel_enhet: ''
+    kort:
+    - type: custom:ki-basseng-card
+      faner:
+      - oversikt
+      - sirkulasjon
+      - spreder
+      - innstillinger
+  - navn: Varmepumpe
+    ikon: mdi:heat-pump-outline
+    status: climate.basseng_bassengvarmepumpe
+    status_pa:
+    - heat
+    - auto
+    - cool
+    - dry
+    tall: sensor.ki_basseng_varmepumpe_effekt
+    tall_enhet: ' W'
+    tall_desimaler: 0
+    nokkel: sensor.ki_basseng_vanntemperatur
+    nokkel_enhet: ° i vannet
+    nokkel_desimaler: 1
+    kort:
+    - type: custom:ki-section-card
+      title: Varmepumpe
+    - type: thermostat
+      entity: climate.basseng_bassengvarmepumpe
+      card_mod:
+        style: 'ha-card { background: var(--gray200); border-radius: 24px; border: none; }
+
+          '
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: custom:ki-toggle-card
+        entity: switch.baseng_basengvarmepumpe_stillemodus
+        name: Stillemodus
+        icon: mdi:volume-off
+      - type: custom:ki-toggle-card
+        entity: switch.ki_basseng_tving_heat
+        name: Tving til heat
+        icon: mdi:fire
+  - navn: Sirkulasjon
+    ikon: mdi:pump
+    status: switch.bassengpumpe
+    tall: sensor.ki_basseng_kjoretid_i_dag
+    tall_enhet: ' t i dag'
+    nokkel: sensor.ki_basseng_omsetninger
+    nokkel_enhet: ' omsetninger'
+    kort:
+    - type: custom:ki-section-card
+      title: Sirkulasjon
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: custom:ki-toggle-card
+        entity: switch.bassengpumpe
+        name: Pumpe
+        icon: mdi:pump
+      - type: custom:ki-toggle-card
+        entity: switch.ki_basseng_auto
+        name: Automatikk
+        icon: mdi:auto-mode
+      - type: custom:ki-toggle-card
+        entity: switch.ki_basseng_prisstyring
+        name: Prisstyring
+        icon: mdi:cash-clock
+      - type: custom:ki-toggle-card
+        entity: switch.ki_basseng_frostvakt
+        name: Frostvakt
+        icon: mdi:snowflake-alert
+  - navn: Spreder
+    ikon: mdi:sprinkler-variant
+    status: switch.ki_basseng_spreder_program
+    tall: sensor.ki_basseng_spreder_neste
+    tall_enhet: ''
+    kort:
+    - type: custom:ki-section-card
+      title: Spreder
+    - type: custom:ki-toggle-card
+      entity: switch.ki_basseng_spreder_program
+      name: Spederprogram
+      icon: mdi:sprinkler-variant
+  - navn: Strøm og utstyr
+    ikon: mdi:power-socket-eu
+    status: switch.baseng_stikkontakt
+    tall: sensor.ki_basseng_effekt_na
+    tall_enhet: ' W'
+    tall_desimaler: 0
+    nokkel: sensor.ki_basseng_energi_i_dag
+    nokkel_enhet: ' kWh i dag'
+    kort:
+    - type: custom:ki-section-card
+      title: Strøm og utstyr
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: custom:ki-toggle-card
+        entity: switch.baseng_stikkontakt
+        name: Stikkontakt
+        icon: mdi:power-socket-eu
+      - type: custom:ki-toggle-card
+        entity: light.bassenglys
+        name: Bassenglys
+        icon: mdi:lightbulb-outline
+- type: custom:gap-card
+  height: 36
+popup_mode: default

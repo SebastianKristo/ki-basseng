@@ -35,31 +35,80 @@
         }
       }
     },
-    "abort": { "already_configured": "This pump is already set up." }
+    "abort": {
+      "already_configured": "This pump is already set up."
+    }
   },
   "options": {
     "step": {
       "init": {
         "title": "KI Basseng",
-        "menu_options": { "maling": "Metering", "utstyr": "Equipment", "basseng": "The pool" }
+        "menu_options": {
+          "maling": "Metering",
+          "utstyr": "Equipment",
+          "basseng": "The pool"
+        }
       },
-      "maling": { "title": "Metering", "data": { "pump_switch": "Circulation pump switch", "power_sensor": "Combined power meter", "pump_power_sensor": "Pump-only power meter", "hp_power_sensor": "Heat-pump-only power meter", "price_sensor": "Electricity price per kWh" } },
-      "utstyr": { "title": "Equipment", "data": { "climate_entity": "Pool heat pump", "inflow_sensor": "Inflow temperature", "outflow_sensor": "Outflow temperature", "outdoor_sensor": "Outdoor temperature", "valve_switch": "Sprinkler water valve" } },
-      "basseng": { "title": "The pool", "data": { "volume_m3": "Volume", "flow_m3h": "Pump capacity", "pump_baseline_w": "Pump baseline load", "hp_nominal_w": "Heat pump rated power", "currency": "Currency" } }
+      "maling": {
+        "title": "Metering",
+        "data": {
+          "pump_switch": "Circulation pump switch",
+          "power_sensor": "Combined power meter",
+          "pump_power_sensor": "Pump-only power meter",
+          "hp_power_sensor": "Heat-pump-only power meter",
+          "price_sensor": "Electricity price per kWh"
+        }
+      },
+      "utstyr": {
+        "title": "Equipment",
+        "data": {
+          "climate_entity": "Pool heat pump",
+          "inflow_sensor": "Inflow temperature",
+          "outflow_sensor": "Outflow temperature",
+          "outdoor_sensor": "Outdoor temperature",
+          "valve_switch": "Sprinkler water valve"
+        }
+      },
+      "basseng": {
+        "title": "The pool",
+        "data": {
+          "volume_m3": "Volume",
+          "flow_m3h": "Pump capacity",
+          "pump_baseline_w": "Pump baseline load",
+          "hp_nominal_w": "Heat pump rated power",
+          "currency": "Currency"
+        }
+      }
     }
   },
   "entity": {
     "sensor": {
       "pumpemodus": {
         "state": {
-          "manuell": "Manual", "hvile": "Resting", "vedlikehold": "Maintenance",
-          "filtrering": "Filtering", "oppvarming": "Heating", "boost": "Boost", "spreder": "Sprinkler"
+          "manuell": "Manual",
+          "hvile": "Resting",
+          "vedlikehold": "Maintenance",
+          "filtrering": "Filtering",
+          "oppvarming": "Heating",
+          "boost": "Boost",
+          "spreder": "Sprinkler"
         }
       }
     },
     "select": {
       "driftsprofil": {
-        "state": { "eco": "Eco", "balansert": "Balanced", "badeklar": "Swim-ready", "ferie": "Away", "egendefinert": "Custom" }
+        "state": {
+          "eco": "Eco",
+          "balansert": "Balanced",
+          "badeklar": "Swim-ready",
+          "ferie": "Away",
+          "egendefinert": "Custom"
+        }
+      }
+    },
+    "switch": {
+      "tving_heat": {
+        "name": "Force heat pump to heat"
       }
     }
   }

@@ -48,6 +48,13 @@ SWITCHES: tuple[KiSwitchDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
     ),
     KiSwitchDescription(
+        key="tving_heat",
+        name="Tving varmepumpa til heat",
+        icon="mdi:fire",
+        setting="force_heat",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiSwitchDescription(
         key="puls_med_varme",
         name="Puls med varme",
         icon="mdi:fire-circle",

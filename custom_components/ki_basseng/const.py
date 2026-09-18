@@ -98,6 +98,9 @@ DEFAULT_SETTINGS: dict = {
     "heat_priority": True,
     "manage_heatpump": True,
     "pulse_with_heat": False,
+    # Varmepumpa hopper selv over i «auto» av og til. I auto styrer den etter sin egen
+    # logikk og kan like gjerne kjøle som varme, så den skal tilbake til «heat».
+    "force_heat": True,
     "sprinkler_program": False,
     "frost_guard": True,
     # tall

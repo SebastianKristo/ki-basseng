@@ -219,6 +219,9 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         await self._apply(mode, desired, now)
         await self._handle_sprinkler(now)
         await self._guard_heatpump(now)
+        # Rekkefølgen betyr noe: sperren over kan nettopp ha satt den til «off», og
+        # `_hp_resume` hindrer da at vakthunden tvinger den på igjen.
+        await self._guard_auto_mode(now)
 
         eldre_enn_5_min = (
             self._last_save is None
@@ -511,6 +514,51 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             blocking=False,
         )
         _LOGGER.debug("Pumpe %s (%s)", "på" if desired else "av", mode)
+
+    # -- varmepumpa hopper i auto -------------------------------------
+    async def _guard_auto_mode(self, now: datetime) -> None:
+        """Setter varmepumpa tilbake til «heat» når den selv går i «auto».
+
+        Pumpa bytter modus på egen hånd — etter strømbrudd, etter en app-oppdatering,
+        eller bare fordi den vil. I «auto» styrer den etter sin egen logikk og kan
+        kjøle bassenget like gjerne som å varme det.
+
+        To ting gjør dette trygt å kjøre hvert minutt:
+
+        · Vi rører den bare når den står i «auto». «off» er noe vi selv setter når
+          sirkulasjonen er av, og «heat» er der vi vil være.
+        · Er den nettopp satt til «off» av sperren under, lar vi den være. Ellers ville
+          de to reglene slåss: én slår av, den andre slår på igjen.
+        """
+        climate = self.cfg(CONF_CLIMATE)
+        if not climate or not self.settings.get("force_heat", True):
+            return
+        state = self.hass.states.get(climate)
+        if state is None or state.state != "auto":
+            return
+        # Har vi selv slått den av nettopp, skal den ikke tvinges på igjen
+        if self._hp_resume:
+            return
+
+        self._auto_rettet = getattr(self, "_auto_rettet", 0) + 1
+        await self.hass.services.async_call(
+            "climate",
+            "set_hvac_mode",
+            {"entity_id": climate, "hvac_mode": "heat"},
+            blocking=False,
+        )
+        _LOGGER.info(
+            "Varmepumpa sto i auto og er satt tilbake til heat (%s. gang)",
+            self._auto_rettet,
+        )
+        await self.hass.services.async_call(
+            "logbook",
+            "log",
+            {"name": "KI Basseng",
+             "message": "Varmepumpa hadde gått i auto og er satt tilbake til heat.",
+             "entity_id": climate},
+            blocking=False,
+        )
 
     # -- varmepumpesperre ---------------------------------------------
     async def _guard_heatpump(self, now: datetime) -> None:

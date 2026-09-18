@@ -105,12 +105,47 @@
           "egendefinert": "Egendefinert"
         }
       }
+    },
+    "switch": {
+      "tving_heat": {
+        "name": "Tving varmepumpa til heat"
+      }
     }
   },
   "services": {
-    "start_spreder": { "name": "Start spreder", "description": "Åpner vannventilen i et gitt antall minutter.", "fields": { "minutter": { "name": "Minutter", "description": "Varighet." } } },
-    "stopp_spreder": { "name": "Stopp spreder", "description": "Stenger vannventilen." },
-    "boost": { "name": "Boost sirkulasjon", "description": "Kjører pumpen uavhengig av plan.", "fields": { "minutter": { "name": "Minutter", "description": "Varighet." } } },
-    "sett_profil": { "name": "Sett driftsprofil", "description": "Bytter profil.", "fields": { "profil": { "name": "Profil", "description": "Hvilken profil." } } }
+    "start_spreder": {
+      "name": "Start spreder",
+      "description": "Åpner vannventilen i et gitt antall minutter.",
+      "fields": {
+        "minutter": {
+          "name": "Minutter",
+          "description": "Varighet."
+        }
+      }
+    },
+    "stopp_spreder": {
+      "name": "Stopp spreder",
+      "description": "Stenger vannventilen."
+    },
+    "boost": {
+      "name": "Boost sirkulasjon",
+      "description": "Kjører pumpen uavhengig av plan.",
+      "fields": {
+        "minutter": {
+          "name": "Minutter",
+          "description": "Varighet."
+        }
+      }
+    },
+    "sett_profil": {
+      "name": "Sett driftsprofil",
+      "description": "Bytter profil.",
+      "fields": {
+        "profil": {
+          "name": "Profil",
+          "description": "Hvilken profil."
+        }
+      }
+    }
   }
 }
