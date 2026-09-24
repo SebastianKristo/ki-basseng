@@ -16,6 +16,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     UnitOfEnergy,
+    UnitOfIrradiance,
     UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
@@ -27,6 +28,38 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN, MODES
 from .coordinator import KiBassengCoordinator
 from .entity import KiBassengEntity
+
+
+SETBACK_STATES = ["av", "aktiv", "planlagt", "lonner_seg_ikke"]
+
+
+def _setback_state(s: dict) -> str:
+    if not s.get("enabled"):
+        return "av"
+    if s.get("active"):
+        return "aktiv"
+    if s.get("worth_it"):
+        return "planlagt"
+    return "lonner_seg_ikke"
+
+
+def _setback_attrs(s: dict) -> dict:
+    def hhmm(value: Any) -> str | None:
+        return value.strftime("%H:%M") if value is not None else None
+
+    return {
+        "begrunnelse": s.get("reason"),
+        "fra": hhmm(s.get("start")),
+        "til": hhmm(s.get("end")),
+        "spart_kwh": s.get("saving_kwh"),
+        "spart_kostnad": s.get("saving_cost"),
+        "uten_senking_kwh": s.get("baseline_kwh"),
+        "uten_senking_kostnad": s.get("baseline_cost"),
+        "med_senking_kwh": s.get("setback_kwh"),
+        "laveste_temperatur": s.get("lowest_temp"),
+        "vurderte_vinduer": s.get("candidates"),
+        "beste_alternativer": s.get("alternatives"),
+    }
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -136,6 +169,7 @@ SENSORS: tuple[KiSensorDescription, ...] = (
             "delta_t": d.get("delta_t"),
             "termisk_w": d.get("thermal_w"),
             "cop_malt": d.get("cop"),
+            "cop_modell": d.get("cop_model"),
         },
     ),
     KiSensorDescription(
@@ -192,6 +226,98 @@ SENSORS: tuple[KiSensorDescription, ...] = (
         attrs=lambda d, c: {
             "kilde": "snitt inn/ut under sirkulasjon" if d.get("pump_on")
             else "innløpsføler",
+            "modellestimat": d.get("temp_estimate"),
+        },
+    ),
+    KiSensorDescription(
+        key="maltemperatur",
+        name="Måltemperatur",
+        icon="mdi:thermometer-check",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        suggested_display_precision=1,
+        value=lambda d, c: d.get("target_temp"),
+        attrs=lambda d, c: {
+            "onsket": d.get("wanted_temp"),
+            "noen_hjemme": d.get("present"),
+            "estimert_vanntemperatur": d.get("temp_estimate"),
+        },
+    ),
+    KiSensorDescription(
+        key="nattsenking",
+        name="Nattsenking",
+        icon="mdi:weather-night",
+        device_class=SensorDeviceClass.ENUM,
+        options=SETBACK_STATES,
+        value=lambda d, c: _setback_state(d.get("setback") or {}),
+        attrs=lambda d, c: _setback_attrs(d.get("setback") or {}),
+    ),
+    KiSensorDescription(
+        key="nattsenking_besparelse",
+        name="Nattsenking besparelse",
+        icon="mdi:lightning-bolt-outline",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=1,
+        value=lambda d, c: (d.get("setback") or {}).get("saving_kwh"),
+        attrs=lambda d, c: {
+            "kostnad": (d.get("setback") or {}).get("saving_cost"),
+        },
+    ),
+    KiSensorDescription(
+        key="varmetap",
+        name="Varmetap",
+        icon="mdi:waves-arrow-up",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value=lambda d, c: d.get("heat_loss_w"),
+        attrs=lambda d, c: {
+            "pooltak": d.get("covered"),
+            "utetemperatur": d.get("outdoor"),
+            "solgevinst_w": d.get("solar_gain_w"),
+            "laert_tapsfaktor_uten_tak": (d.get("learned") or {}).get("loss_open"),
+            "laert_tapsfaktor_med_tak": (d.get("learned") or {}).get("loss_covered"),
+            "laert_cop_faktor": (d.get("learned") or {}).get("cop_factor"),
+            "cop_modell": d.get("cop_model"),
+        },
+    ),
+    KiSensorDescription(
+        key="solinnstraling",
+        name="Solinnstråling",
+        icon="mdi:weather-sunny",
+        native_unit_of_measurement=UnitOfIrradiance.WATTS_PER_SQUARE_METER,
+        device_class=SensorDeviceClass.IRRADIANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value=lambda d, c: d.get("irradiance"),
+        attrs=lambda d, c: {
+            "solhoyde": d.get("sun_elevation"),
+            "breddegrad": c.location[0],
+            "lengdegrad": c.location[1],
+        },
+    ),
+    KiSensorDescription(
+        key="siste_klortablett",
+        name="Siste klortablett",
+        icon="mdi:pill",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value=lambda d, c: (d.get("chlorine") or {}).get("last"),
+        attrs=lambda d, c: {
+            "dager_siden": (d.get("chlorine") or {}).get("days_since"),
+            "siste_7_dager": (d.get("chlorine") or {}).get("week"),
+            "totalt": (d.get("chlorine") or {}).get("total"),
+            "historikk": (d.get("chlorine") or {}).get("history"),
+        },
+    ),
+    KiSensorDescription(
+        key="neste_klortablett",
+        name="Neste klortablett",
+        icon="mdi:calendar-clock",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value=lambda d, c: (d.get("chlorine") or {}).get("next"),
+        attrs=lambda d, c: {
+            "intervall_dager": (d.get("chlorine") or {}).get("interval_days"),
         },
     ),
     KiSensorDescription(

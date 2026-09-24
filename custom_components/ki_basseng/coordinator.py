@@ -13,8 +13,13 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
+from . import termisk
 from .const import (
+    CHLORINE_HISTORY,
+    CONF_AREA,
     CONF_CLIMATE,
+    CONF_COLLECTOR_AREA,
+    CONF_COVER,
     CONF_CURRENCY,
     CONF_FLOW,
     CONF_HP_NOMINAL,
@@ -23,19 +28,25 @@ from .const import (
     CONF_OUTDOOR,
     CONF_OUTFLOW,
     CONF_POWER_SENSOR,
+    CONF_PRESENCE,
     CONF_PRICE_SENSOR,
     CONF_PUMP_POWER_SENSOR,
     CONF_PUMP_SWITCH,
     CONF_VALVE,
     CONF_VOLUME,
+    CONF_WEATHER,
+    DEFAULT_AREA,
+    DEFAULT_COLLECTOR_AREA,
     DEFAULT_COUNTERS,
     DEFAULT_CURRENCY,
     DEFAULT_FLOW,
     DEFAULT_HP_NOMINAL,
+    DEFAULT_LEARNED,
     DEFAULT_SETTINGS,
     DEFAULT_VOLUME,
     DOMAIN,
     FALLBACK_HOURS,
+    HEAT_HYSTERESIS,
     HP_MARGIN_W,
     MODE_BOOST,
     MODE_FILTER,
@@ -43,11 +54,15 @@ from .const import (
     MODE_MAINTENANCE,
     MODE_MANUAL,
     MODE_REST,
+    MODE_SOLAR,
     NIGHT_HOURS,
     NIGHT_PENALTY,
     POWER_NOISE_W,
+    PROFILE_AWAY,
     PROFILE_CUSTOM,
     PROFILES,
+    SOLAR_MIN_IRRADIANCE,
+    SOLAR_OVERSHOOT,
     STORAGE_VERSION,
 )
 
@@ -55,9 +70,16 @@ _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL = timedelta(seconds=30)
 UNKNOWN = ("unknown", "unavailable", "none", "None", "")
+PRESENT_STATES = ("home", "on", "true", "hjemme")
+# Nattsenkingen regnes ut på nytt hvert tiende minutt
+SETBACK_RECALC_MIN = 10
+# Ikke start en ny senking rett etter at en ble avbrutt
+SETBACK_HOLD_S = 1800
+# Tapslæringen trenger et rolig vindu av en viss lengde
+LOSS_WINDOW_S = 3 * 3600
 
 
-def _f(value: Any, default: float = 0.0) -> float:
+def _f(value: Any, default: Any = 0.0) -> Any:
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -95,8 +117,24 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
 
         self._hp_resume: bool = False
         self._hp_target: float | None = None
+        self._auto_rettet: int = 0
         self._save_pending: bool = False
         self._last_save: datetime | None = None
+
+        # Varmemodellen
+        self.learned: dict = dict(DEFAULT_LEARNED)
+        self.chlorine: list[dict] = []
+        self._prices_cache: tuple[dict[int, float], dict[int, float]] | None = None
+        self._forecast: dict[datetime, tuple[Any, Any]] = {}
+        self._forecast_at: datetime | None = None
+        self._temp_est: float | None = None
+        self._env: dict = {}
+        self._setback: termisk.SetbackDecision | None = None
+        self._setback_key: tuple | None = None
+        self._setback_on: bool = False
+        self._setback_ended: datetime | None = None
+        self._setpoint_sent: tuple[float, datetime] | None = None
+        self._loss_window: dict | None = None
 
     # ------------------------------------------------------------------
     # Oppsett
@@ -110,7 +148,10 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         self.settings.update(stored.get("settings") or {})
         self.counters.update(stored.get("counters") or {})
         self._day = stored.get("day")
-        self.counters.setdefault("sprinkler_last", 0.0)
+        self.learned.update(stored.get("learned") or {})
+        self.chlorine = list(stored.get("chlorine") or [])[-CHLORINE_HISTORY:]
+        for key, value in DEFAULT_COUNTERS.items():
+            self.counters.setdefault(key, value)
 
         # Basislast kan være endret i options etter oppsett
         if "pump_baseline" not in (stored.get("settings") or {}):
@@ -134,6 +175,8 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
                 "settings": self.settings,
                 "counters": self.counters,
                 "day": self._day,
+                "learned": self.learned,
+                "chlorine": self.chlorine,
             }
         )
         self._save_pending = False
@@ -172,6 +215,14 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         return self.cfg(CONF_CURRENCY) or DEFAULT_CURRENCY
 
     @property
+    def area(self) -> float:
+        return max(_f(self.cfg(CONF_AREA), DEFAULT_AREA), 1.0)
+
+    @property
+    def collector_area(self) -> float:
+        return max(_f(self.cfg(CONF_COLLECTOR_AREA), DEFAULT_COLLECTOR_AREA), 0.0)
+
+    @property
     def turnover_hours(self) -> float:
         """Timer pumpedrift for én full omsetning av bassengvolumet."""
         return self.volume / self.flow
@@ -179,6 +230,15 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
     @property
     def pump_on(self) -> bool:
         return self._pump_state
+
+    async def _logbook(self, message: str, entity_id: str | None = None) -> None:
+        """Skriv i loggboka hvis den finnes. Styringen skal aldri stoppe på den."""
+        if not self.hass.services.has_service("logbook", "log"):
+            return
+        data = {"name": "KI Basseng", "message": message}
+        if entity_id:
+            data["entity_id"] = entity_id
+        await self.hass.services.async_call("logbook", "log", data, blocking=False)
 
     # ------------------------------------------------------------------
     # Lyttere
@@ -212,13 +272,19 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
     # ------------------------------------------------------------------
     async def _async_update_data(self) -> dict:
         now = dt_util.now()
+        self._prices_cache = None
         self._roll_day(now)
         power = self._accumulate(now)
         self._build_plan(now)
+        await self._refresh_forecast(now)
+        self._update_environment(now, power)
+        self._plan_setback(now)
         mode, desired, reason = self._decide(now)
         await self._apply(mode, desired, now)
         await self._handle_sprinkler(now)
+        await self._guard_setback(now)
         await self._guard_heatpump(now)
+        await self._guard_setpoint(now)
         # Rekkefølgen betyr noe: sperren over kan nettopp ha satt den til «off», og
         # `_hp_resume` hindrer da at vakthunden tvinger den på igjen.
         await self._guard_auto_mode(now)
@@ -285,7 +351,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
                 )
                 self.counters["cost_reference"] += baseline_kwh * price
 
-        return {"pump_w": pump_w, "hp_w": hp_w, "price": price}
+        return {"pump_w": pump_w, "hp_w": hp_w, "price": price, "dt_s": dt_s}
 
     def _split_power(self) -> tuple[float, float]:
         """Del den kombinerte smartpluggen i pumpe og varmepumpe.
@@ -318,16 +384,16 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         return (round(total, 1), 0.0)
 
     def _price_now(self) -> float | None:
-        state = self._state(CONF_PRICE_SENSOR)
-        if state is None:
-            return None
-        try:
-            return float(state.state)
-        except (TypeError, ValueError):
-            return None
+        return self._num(CONF_PRICE_SENSOR)
 
     # -- priser og plan -----------------------------------------------
     def _prices(self) -> tuple[dict[int, float], dict[int, float]]:
+        """Timespriser, lest én gang per tikk."""
+        if self._prices_cache is None:
+            self._prices_cache = self._read_prices()
+        return self._prices_cache
+
+    def _read_prices(self) -> tuple[dict[int, float], dict[int, float]]:
         """Hent timespriser. Støtter Nordpool, ENTSO-e og enkle lister."""
         state = self._state(CONF_PRICE_SENSOR)
         today: dict[int, float] = {}
@@ -440,6 +506,20 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             return start <= now.hour < end
         return now.hour >= start or now.hour < end
 
+    def _heat_allowed(self, now: datetime) -> bool:
+        """Får varmepumpen kreve sirkulasjon nå?
+
+        Med smart nattsenking er det simuleringen som bestemmer når den skal stå
+        av; ellers gjelder det faste varmevinduet.
+        """
+        if self._smart_setback_enabled():
+            return not self._setback_on
+        return self._heat_window(now)
+
+    def _needs_heat(self) -> bool:
+        temp = self._temp_est
+        return temp is not None and temp < self.target_temp() - HEAT_HYSTERESIS
+
     @property
     def turnovers_done(self) -> float:
         return self.counters["volume_today"] / max(self.volume, 0.1)
@@ -462,9 +542,20 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             return MODE_BOOST, True, f"Boost i {igjen} min til"
         self._boost_until = None
 
-        heat = self._heat_running()
-        if heat and self.settings["heat_priority"] and self._heat_window(now):
+        heat = self._heat_running() or (self._hp_resume and self._needs_heat())
+        if heat and self.settings["heat_priority"] and self._heat_allowed(now):
             return MODE_HEATING, True, "Varmepumpen varmer og trenger sirkulasjon"
+
+        ghi = self._env.get("ghi", 0.0)
+        temp = self._temp_est
+        if (
+            self.collector_area > 0
+            and self.settings.get("solar_harvest")
+            and ghi >= SOLAR_MIN_IRRADIANCE
+            and temp is not None
+            and temp < self.target_temp() + SOLAR_OVERSHOOT
+        ):
+            return MODE_SOLAR, True, f"Solfangeren har varme å gi ({ghi:.0f} W/m²)"
 
         left = self.turnovers_left
         if left > 0.005:
@@ -515,6 +606,471 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         )
         _LOGGER.debug("Pumpe %s (%s)", "på" if desired else "av", mode)
 
+    # ------------------------------------------------------------------
+    # Omgivelser: sted, sol, vær, tak og tilstedeværelse
+    # ------------------------------------------------------------------
+    @property
+    def location(self) -> tuple[float, float]:
+        return (self.hass.config.latitude, self.hass.config.longitude)
+
+    def _outdoor_now(self) -> float | None:
+        ute = self._num(CONF_OUTDOOR)
+        if ute is not None:
+            return ute
+        weather = self._state(CONF_WEATHER)
+        if weather is not None:
+            return _f(weather.attributes.get("temperature"), None)
+        return None
+
+    def _cloud_now(self) -> float | None:
+        weather = self._state(CONF_WEATHER)
+        if weather is None:
+            return None
+        cloud = _f(weather.attributes.get("cloud_coverage"), None)
+        return None if cloud is None else cloud / 100
+
+    async def _refresh_forecast(self, now: datetime) -> None:
+        """Hent timesvarsel for temperatur og skydekke hver halvtime."""
+        weather = self.cfg(CONF_WEATHER)
+        if not weather:
+            return
+        if self._forecast_at and (now - self._forecast_at).total_seconds() < 1800:
+            return
+        self._forecast_at = now
+        try:
+            response = await self.hass.services.async_call(
+                "weather",
+                "get_forecasts",
+                {"entity_id": weather, "type": "hourly"},
+                blocking=True,
+                return_response=True,
+            )
+        except Exception as err:  # noqa: BLE001 – værmeldingen er et tillegg
+            _LOGGER.debug("Fikk ikke timesvarsel fra %s: %s", weather, err)
+            return
+        rows = ((response or {}).get(weather) or {}).get("forecast") or []
+        forecast: dict[datetime, tuple[Any, Any]] = {}
+        for row in rows:
+            stamp = dt_util.parse_datetime(str(row.get("datetime", "")))
+            if stamp is None:
+                continue
+            key = dt_util.as_utc(stamp).replace(minute=0, second=0, microsecond=0)
+            forecast[key] = (row.get("temperature"), row.get("cloud_coverage"))
+        if forecast:
+            self._forecast = forecast
+
+    def _hours_ahead(self, now: datetime, count: int) -> list[termisk.Hour]:
+        """Luft, sol, pris og filtreringsplan time for time fremover."""
+        today, tomorrow = self._prices()
+        lat, lon = self.location
+        air_now = self._outdoor_now()
+        cloud_now = self._cloud_now()
+        start = dt_util.as_utc(now).replace(minute=0, second=0, microsecond=0)
+        hours: list[termisk.Hour] = []
+        for i in range(count):
+            utc = start + timedelta(hours=i)
+            local = dt_util.as_local(utc)
+            day = (local.date() - now.date()).days
+            prices = today if day == 0 else tomorrow if day == 1 else {}
+            plan = self._plan if day == 0 else self._plan_tomorrow if day == 1 else []
+            temp_fc, cloud_fc = self._forecast.get(utc, (None, None))
+            air = _f(temp_fc, None)
+            if air is None:
+                air = air_now if air_now is not None else 15.0
+            cloud = _f(cloud_fc, None)
+            cloud = cloud / 100 if cloud is not None else cloud_now
+            elevation = termisk.sun_elevation(utc + timedelta(minutes=30), lat, lon)
+            hours.append(
+                termisk.Hour(
+                    start=local,
+                    air=air,
+                    ghi=termisk.irradiance(elevation, cloud),
+                    price=prices.get(local.hour),
+                    filter_hour=local.hour in plan,
+                )
+            )
+        return hours
+
+    def present(self) -> bool:
+        """Er noen hjemme? Ferieprofil betyr borte; ingen entiteter betyr hjemme."""
+        if self.settings.get("profile") == PROFILE_AWAY:
+            return False
+        entities = self.cfg(CONF_PRESENCE) or []
+        if isinstance(entities, str):
+            entities = [entities]
+        known = False
+        for entity in entities:
+            state = self.hass.states.get(entity)
+            if state is None or state.state in UNKNOWN:
+                continue
+            known = True
+            if state.state.lower() in PRESENT_STATES:
+                return True
+            if entity.startswith("zone.") and _f(state.state) > 0:
+                return True
+        return not known
+
+    def covered(self) -> bool:
+        """Ligger taket på? En cover-entitet er «closed» når bassenget er dekket."""
+        state = self._state(CONF_COVER)
+        if state is None:
+            return bool(self.settings.get("cover_on"))
+        if state.entity_id.startswith("cover."):
+            return state.state in ("closed", "closing")
+        return state.state == "on"
+
+    def target_temp(self) -> float:
+        """Temperaturen bassenget skal holde nå.
+
+        Eier vi settpunktet, er det ønsket temperatur minus borte-senking. Ellers
+        er det varmepumpens eget settpunkt som gjelder.
+        """
+        wanted = _f(self.settings.get("target_temp"), 27)
+        if not self.settings.get("manage_setpoint"):
+            climate = self._state(CONF_CLIMATE)
+            if climate is None:
+                return wanted
+            return _f(climate.attributes.get("temperature"), wanted)
+        if not self.present():
+            wanted -= _f(self.settings.get("away_drop"), 0)
+        return wanted
+
+    def _pool(self, covered: bool) -> termisk.Pool:
+        s = self.settings
+        return termisk.Pool(
+            volume=self.volume,
+            area=self.area,
+            u_open=_f(s.get("u_open"), 15),
+            u_covered=_f(s.get("u_covered"), 5),
+            cover_solar=_f(s.get("cover_solar"), 60) / 100,
+            hp_nominal_w=_f(self.cfg(CONF_HP_NOMINAL), DEFAULT_HP_NOMINAL),
+            pump_w=_f(s.get("pump_baseline"), 800),
+            collector_area=self.collector_area,
+            cop_factor=_f(self.learned.get("cop_factor"), 1.0),
+            loss_factor=_f(
+                self.learned.get("loss_covered" if covered else "loss_open"), 1.0
+            ),
+        )
+
+    # -- vanntemperatur og læring --------------------------------------
+    def _measured_temp(self) -> float | None:
+        """Vanntemperatur vi stoler på: bare når vannet har sirkulert en stund.
+
+        Står pumpen, måler følerne vannet som står i røret.
+        """
+        since = (dt_util.utcnow() - self._pump_changed_at).total_seconds()
+        if not self.pump_on or since < 180:
+            return None
+        inn = self._num(CONF_INFLOW)
+        if inn is None:
+            return None
+        ut = self._num(CONF_OUTFLOW)
+        # Innløpet er bassengvannet; utløpet er etter varmepumpen
+        return inn if ut is None or ut >= inn else (inn + ut) / 2
+
+    def _measured_cop(self, power: dict) -> tuple[float | None, float | None, float | None]:
+        inn = self._num(CONF_INFLOW)
+        ut = self._num(CONF_OUTFLOW)
+        delta = round(ut - inn, 2) if (inn is not None and ut is not None) else None
+        thermal = (
+            round(self.flow * 1162.8 * delta)
+            if (delta is not None and self.pump_on and 0.05 < delta < 3)
+            else None
+        )
+        cop = (
+            round(thermal / power["hp_w"], 2)
+            if (thermal and power["hp_w"] > 300)
+            else None
+        )
+        return delta, thermal, cop
+
+    def _update_environment(self, now: datetime, power: dict) -> None:
+        """Oppdater sol, luft, tak, estimert vanntemperatur og lærte faktorer."""
+        covered = self.covered()
+        lat, lon = self.location
+        elevation = termisk.sun_elevation(now, lat, lon)
+        ghi = termisk.irradiance(elevation, self._cloud_now())
+        air = self._outdoor_now()
+        pool = self._pool(covered)
+        delta, thermal, cop = self._measured_cop(power)
+
+        measured = self._measured_temp()
+        if measured is not None:
+            self._temp_est = measured
+        elif self._temp_est is None:
+            self._temp_est = self._water_temp()
+        elif power["dt_s"] and air is not None:
+            # Ingen pålitelig måling: la modellen føre temperaturen videre
+            net = pool.solar_w(ghi, covered, self.pump_on) - pool.loss_w(
+                self._temp_est, air, covered
+            )
+            if self.pump_on:
+                net += power["pump_w"] * termisk.PUMP_HEAT_FRACTION
+            if thermal:
+                net += thermal
+            self._temp_est += net * power["dt_s"] / 3_600_000 / pool.capacity_kwh_k
+
+        temp = self._temp_est
+        if cop and air is not None and temp is not None:
+            raw = pool.cop(air, temp) / max(pool.cop_factor, 0.01)
+            self.learned["cop_factor"] = round(
+                termisk.ema(pool.cop_factor, cop / raw, 0.01, 0.5, 1.6), 4
+            )
+            self.learned["cop_samples"] = int(self.learned.get("cop_samples", 0)) + 1
+
+        self._learn_loss(now, measured, air, covered, elevation, power)
+
+        loss = pool.loss_w(temp, air, covered) if (temp is not None and air is not None) else None
+        solar = pool.solar_w(ghi, covered, self.pump_on)
+        self._env = {
+            "elevation": round(elevation, 1),
+            "ghi": round(ghi, 0),
+            "air": air,
+            "covered": covered,
+            "present": self.present(),
+            "target": round(self.target_temp(), 1),
+            "loss_w": round(loss) if loss is not None else None,
+            "solar_w": round(solar),
+            "delta_t": delta,
+            "thermal_w": thermal,
+            "cop": cop,
+            "cop_model": round(pool.cop(air, temp), 2)
+            if (air is not None and temp is not None)
+            else None,
+        }
+
+    def _learn_loss(
+        self,
+        now: datetime,
+        measured: float | None,
+        air: float | None,
+        covered: bool,
+        elevation: float,
+        power: dict,
+    ) -> None:
+        """Lær varmetapet av rolige netter.
+
+        Når pumpen går, varmepumpen står og solen er nede, er det bare
+        pumpevarmen inn og varmetapet ut. Over noen timer gir fallet i
+        temperatur hvor stort tapet faktisk er, og faktoren justeres mot det.
+        """
+        calm = (
+            measured is not None
+            and air is not None
+            and power["hp_w"] < POWER_NOISE_W
+            and elevation < -2
+        )
+        window = self._loss_window
+        if not calm or (window and window["covered"] != covered):
+            self._loss_window = None
+            return
+        if window is None:
+            self._loss_window = {
+                "t0": now, "temp0": measured, "air_sum": air, "n": 1, "covered": covered
+            }
+            return
+        window["air_sum"] += air
+        window["n"] += 1
+        seconds = (now - window["t0"]).total_seconds()
+        if seconds < LOSS_WINDOW_S:
+            return
+        self._loss_window = None
+        pool = self._pool(covered)
+        hours = seconds / 3600
+        drop = window["temp0"] - measured
+        if drop < 0.2:
+            return
+        observed = drop * pool.capacity_kwh_k * 1000 / hours + power["pump_w"] * (
+            termisk.PUMP_HEAT_FRACTION
+        )
+        mean_water = (window["temp0"] + measured) / 2
+        mean_air = window["air_sum"] / window["n"]
+        raw = pool.loss_w(mean_water, mean_air, covered) / max(pool.loss_factor, 0.01)
+        if raw < 200:
+            return
+        key = "loss_covered" if covered else "loss_open"
+        self.learned[key] = round(
+            termisk.ema(pool.loss_factor, observed / raw, 0.2, 0.3, 3.0), 3
+        )
+        self.learned["loss_samples"] = int(self.learned.get("loss_samples", 0)) + 1
+        self._save_pending = True
+        _LOGGER.info("Varmetap lært (%s): faktor %.2f", key, self.learned[key])
+
+    # -- nattsenking ---------------------------------------------------
+    def _smart_setback_enabled(self) -> bool:
+        return bool(
+            self.settings.get("smart_setback")
+            and self.settings.get("manage_heatpump")
+            and self.cfg(CONF_CLIMATE)
+        )
+
+    def _plan_setback(self, now: datetime) -> None:
+        """Avgjør om varmepumpen bør stå av en stund i natt.
+
+        Horisonten går fra nå til varmevinduet starter (badeklar). Natten er
+        timene mellom varmevinduets slutt og start. Regnes ut på nytt hvert
+        tiende minutt, så beslutningen følger vannet, været og prisene.
+        """
+        if not self._smart_setback_enabled():
+            self._setback = None
+            return
+        key = (now.date(), now.hour, now.minute // SETBACK_RECALC_MIN)
+        if key == self._setback_key:
+            return
+        self._setback_key = key
+
+        start_h = int(_f(self.settings.get("heat_start"), 6)) % 24
+        end_h = int(_f(self.settings.get("heat_end"), 22)) % 24
+        horizon = (start_h - now.hour) % 24 or 24
+        if start_h == end_h:
+            self._setback = termisk.SetbackDecision(False, reason="Varmevinduet dekker hele døgnet")
+            return
+        if self._temp_est is None:
+            self._setback = termisk.SetbackDecision(False, reason="Mangler vanntemperatur")
+            return
+
+        def is_night(hour: int) -> bool:
+            if end_h < start_h:
+                return end_h <= hour < start_h
+            return hour >= end_h or hour < start_h
+
+        hours = self._hours_ahead(now, horizon)
+        night = {i for i, h in enumerate(hours) if is_night(h.start.hour)}
+        covered = self.covered()
+        self._setback = termisk.optimise_setback(
+            self._pool(covered),
+            hours,
+            self._temp_est,
+            self.target_temp(),
+            covered,
+            night,
+            horizon,
+            _f(self.settings.get("max_drop"), 3),
+            self.settings.get("setback_criterion") or termisk.CRITERION_BOTH,
+        )
+
+    async def _guard_setback(self, now: datetime) -> None:
+        """Slå varmepumpen av og på etter nattsenkingens vindu."""
+        climate = self.cfg(CONF_CLIMATE)
+        active = (
+            self._smart_setback_enabled()
+            and self._setback is not None
+            and self._setback.active(now)
+        )
+        if active == self._setback_on or not climate:
+            return
+        if active and self._setback_ended and (
+            (now - self._setback_ended).total_seconds() < SETBACK_HOLD_S
+        ):
+            return
+
+        state = self.hass.states.get(climate)
+        if active:
+            self._setback_on = True
+            if state is not None and state.state not in UNKNOWN and state.state != "off":
+                self._hp_target = _f(state.attributes.get("temperature"), None)
+                await self.hass.services.async_call(
+                    "climate", "set_hvac_mode",
+                    {"entity_id": climate, "hvac_mode": "off"}, blocking=False,
+                )
+            self._hp_resume = True
+            melding = (
+                f"Nattsenking {self._setback.start:%H:%M}–{self._setback.end:%H:%M}: "
+                f"sparer {self._setback.saving_kwh:.1f} kWh "
+                f"({self._setback.saving_cost:.2f} {self.currency})."
+            )
+        else:
+            self._setback_on = False
+            self._setback_ended = now
+            # Sperren setter den på igjen når sirkulasjonen er i gang
+            self._hp_resume = True
+            melding = "Nattsenkingen er over, varmepumpa varmer igjen."
+        _LOGGER.info(melding)
+        await self._logbook(melding, climate)
+
+    async def _guard_setpoint(self, now: datetime) -> None:
+        """Hold varmepumpens settpunkt på ønsket temperatur (minus borte-senking)."""
+        climate = self.cfg(CONF_CLIMATE)
+        if not climate or not self.settings.get("manage_setpoint"):
+            return
+        target = round(self.target_temp(), 1)
+        self._hp_target = target
+        state = self.hass.states.get(climate)
+        if state is None or state.state in UNKNOWN or state.state == "off":
+            return
+        current = _f(state.attributes.get("temperature"), None)
+        if current is not None and abs(current - target) < 0.05:
+            return
+        # Samme verdi sendes ikke oftere enn hvert annet minutt, i tilfelle
+        # varmepumpa runder av eller ignorerer den
+        if self._setpoint_sent and self._setpoint_sent[0] == target and (
+            (now - self._setpoint_sent[1]).total_seconds() < 120
+        ):
+            return
+        self._setpoint_sent = (target, now)
+        await self.hass.services.async_call(
+            "climate", "set_temperature",
+            {"entity_id": climate, "temperature": target}, blocking=False,
+        )
+        _LOGGER.debug("Settpunkt %s → %s", current, target)
+
+    # ------------------------------------------------------------------
+    # Klortabletter
+    # ------------------------------------------------------------------
+    async def async_log_chlorine(self, count: int = 1, note: str = "") -> None:
+        now = dt_util.now()
+        self.chlorine.append(
+            {
+                "tid": now.isoformat(),
+                "antall": int(count),
+                "notat": note or "",
+                "vanntemp": round(self._temp_est, 1) if self._temp_est is not None else None,
+            }
+        )
+        self.chlorine = self.chlorine[-CHLORINE_HISTORY:]
+        self.counters["chlorine_total"] = int(self.counters.get("chlorine_total", 0)) + int(count)
+        self._save_pending = True
+        flertall = "er" if count != 1 else ""
+        await self._logbook(
+            f"{int(count)} klortablett{flertall} lagt i" + (f": {note}" if note else "")
+        )
+        await self.async_request_refresh()
+
+    async def async_undo_chlorine(self) -> None:
+        if not self.chlorine:
+            return
+        last = self.chlorine.pop()
+        self.counters["chlorine_total"] = max(
+            0, int(self.counters.get("chlorine_total", 0)) - int(last.get("antall", 1))
+        )
+        self._save_pending = True
+        await self.async_request_refresh()
+
+    def _chlorine_info(self, now: datetime) -> dict:
+        last = None
+        if self.chlorine:
+            last = dt_util.parse_datetime(str(self.chlorine[-1].get("tid")))
+        interval = termisk.chlorine_interval_days(
+            _f(self.settings.get("chlorine_days"), 7), self._temp_est
+        )
+        next_at = last + timedelta(days=interval) if last else None
+        week_ago = now - timedelta(days=7)
+        week = 0
+        for row in self.chlorine:
+            stamp = dt_util.parse_datetime(str(row.get("tid")))
+            if stamp and stamp >= week_ago:
+                week += int(row.get("antall", 1))
+        return {
+            "last": last,
+            "next": next_at,
+            "due": next_at is None or now >= next_at,
+            "interval_days": round(interval, 1),
+            "week": week,
+            "total": int(self.counters.get("chlorine_total", 0)),
+            "history": list(reversed(self.chlorine[-10:])),
+            "days_since": round((now - last).total_seconds() / 86400, 1) if last else None,
+        }
+
     # -- varmepumpa hopper i auto -------------------------------------
     async def _guard_auto_mode(self, now: datetime) -> None:
         """Setter varmepumpa tilbake til «heat» når den selv går i «auto».
@@ -540,7 +1096,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         if self._hp_resume:
             return
 
-        self._auto_rettet = getattr(self, "_auto_rettet", 0) + 1
+        self._auto_rettet += 1
         await self.hass.services.async_call(
             "climate",
             "set_hvac_mode",
@@ -551,13 +1107,8 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             "Varmepumpa sto i auto og er satt tilbake til heat (%s. gang)",
             self._auto_rettet,
         )
-        await self.hass.services.async_call(
-            "logbook",
-            "log",
-            {"name": "KI Basseng",
-             "message": "Varmepumpa hadde gått i auto og er satt tilbake til heat.",
-             "entity_id": climate},
-            blocking=False,
+        await self._logbook(
+            "Varmepumpa hadde gått i auto og er satt tilbake til heat.", climate
         )
 
     # -- varmepumpesperre ---------------------------------------------
@@ -584,6 +1135,8 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             return
 
         if self.pump_on and self._hp_resume and since > 120:
+            if self._setback_on:
+                return
             mode = self.data.get("mode") if self.data else None
             if mode == MODE_MAINTENANCE and not self.settings["pulse_with_heat"]:
                 return
@@ -717,6 +1270,8 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
                 self.settings["profile"] = PROFILE_CUSTOM
         if key in ("turnovers", "daytime_hours"):
             self._plan_signature = None
+        # Alt som påvirker varmemodellen gir ny vurdering av nattsenkingen
+        self._setback_key = None
         self._save_pending = True
         await self.async_request_refresh()
 
@@ -747,7 +1302,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         return blocks
 
     def _next_start(self, now: datetime, mode: str) -> datetime | None:
-        if mode in (MODE_FILTER, MODE_HEATING, MODE_BOOST):
+        if mode in (MODE_FILTER, MODE_HEATING, MODE_BOOST, MODE_SOLAR):
             return None
         if mode == MODE_MAINTENANCE:
             return (now + timedelta(hours=1)).replace(
@@ -808,19 +1363,9 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             if prices_today
             else None
         )
-        inn = self._num(CONF_INFLOW)
-        ut = self._num(CONF_OUTFLOW)
-        delta = round(ut - inn, 2) if (inn is not None and ut is not None) else None
-        termisk = (
-            round(self.flow * 1162.8 * delta)
-            if (delta is not None and self.pump_on and 0.05 < delta < 3)
-            else None
-        )
-        cop = (
-            round(termisk / power["hp_w"], 2)
-            if (termisk and power["hp_w"] > 300)
-            else None
-        )
+        env = self._env
+        setback = self._setback
+        chlorine = self._chlorine_info(now)
 
         return {
             "mode": mode,
@@ -854,9 +1399,24 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             "price_plan_avg": snitt_plan,
             "price_day_avg": snitt_dogn,
             "water_temp": temp,
-            "delta_t": delta,
-            "thermal_w": termisk,
-            "cop": cop,
+            "delta_t": env.get("delta_t"),
+            "thermal_w": env.get("thermal_w"),
+            "cop": env.get("cop"),
+            "cop_model": env.get("cop_model"),
+            "temp_estimate": round(self._temp_est, 2) if self._temp_est is not None else None,
+            "target_temp": env.get("target"),
+            "wanted_temp": _f(self.settings.get("target_temp"), 27),
+            "present": env.get("present"),
+            "covered": env.get("covered"),
+            "outdoor": env.get("air"),
+            "sun_elevation": env.get("elevation"),
+            "irradiance": env.get("ghi"),
+            "heat_loss_w": env.get("loss_w"),
+            "solar_gain_w": env.get("solar_w"),
+            "learned": dict(self.learned),
+            "setback": self._setback_snapshot(setback, now),
+            "setback_active": self._setback_on,
+            "chlorine": chlorine,
             "override_until": self._override_until,
             "override": self._override_until is not None
             and now < self._override_until,
@@ -867,6 +1427,32 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             "sprinkler_reason": self._sprinkler_reason,
             "hp_waiting": self._hp_resume,
             "currency": self.currency,
+        }
+
+    def _setback_snapshot(
+        self, setback: termisk.SetbackDecision | None, now: datetime
+    ) -> dict:
+        if not self._smart_setback_enabled():
+            return {"enabled": False, "reason": "Smart nattsenking er av"}
+        if setback is None:
+            return {"enabled": True, "reason": "Ikke beregnet ennå"}
+        base = setback.baseline
+        best = setback.best
+        return {
+            "enabled": True,
+            "worth_it": setback.worth_it,
+            "active": self._setback_on,
+            "start": setback.start,
+            "end": setback.end,
+            "reason": setback.reason,
+            "saving_kwh": setback.saving_kwh,
+            "saving_cost": setback.saving_cost,
+            "baseline_kwh": base.kwh if base else None,
+            "baseline_cost": base.cost if base else None,
+            "setback_kwh": best.kwh if best else None,
+            "lowest_temp": best.temp_min if best else None,
+            "candidates": setback.candidates,
+            "alternatives": setback.evaluated[:5],
         }
 
     def _pump_cost_today(self) -> float:

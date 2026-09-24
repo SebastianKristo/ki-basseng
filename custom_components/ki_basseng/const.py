@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "ki_basseng"
 NAME = "KI Basseng"
-VERSION = "1.0.1"
+VERSION = "1.3.0"
 STORAGE_VERSION = 1
 
 PLATFORMS: list[Platform] = [
@@ -32,18 +32,25 @@ CONF_INFLOW = "inflow_sensor"
 CONF_OUTFLOW = "outflow_sensor"
 CONF_OUTDOOR = "outdoor_sensor"
 CONF_VALVE = "valve_switch"
+CONF_WEATHER = "weather_entity"
+CONF_COVER = "cover_entity"
+CONF_PRESENCE = "presence_entities"
 
 CONF_VOLUME = "volume_m3"
 CONF_FLOW = "flow_m3h"
 CONF_PUMP_BASELINE = "pump_baseline_w"
 CONF_HP_NOMINAL = "hp_nominal_w"
 CONF_CURRENCY = "currency"
+CONF_AREA = "surface_m2"
+CONF_COLLECTOR_AREA = "collector_m2"
 
 DEFAULT_VOLUME = 40.95
 DEFAULT_FLOW = 11.3
 DEFAULT_PUMP_BASELINE = 800.0
 DEFAULT_HP_NOMINAL = 1470.0
 DEFAULT_CURRENCY = "SEK"
+DEFAULT_AREA = 24.1  # 7,3 × 3,3
+DEFAULT_COLLECTOR_AREA = 0.0
 
 # Under denne effekten regnes alt som «av» (målestøy fra smartpluggen)
 POWER_NOISE_W = 25.0
@@ -60,6 +67,7 @@ MODE_FILTER = "filtrering"
 MODE_HEATING = "oppvarming"
 MODE_BOOST = "boost"
 MODE_SPRINKLER = "spreder"
+MODE_SOLAR = "solvarme"
 
 MODES = [
     MODE_MANUAL,
@@ -69,6 +77,7 @@ MODES = [
     MODE_HEATING,
     MODE_BOOST,
     MODE_SPRINKLER,
+    MODE_SOLAR,
 ]
 
 # --------------------------------------------------------------------------
@@ -103,6 +112,14 @@ DEFAULT_SETTINGS: dict = {
     "force_heat": True,
     "sprinkler_program": False,
     "frost_guard": True,
+    # Varmepumpa står av i natt bare når simuleringen sier at det sparer
+    "smart_setback": True,
+    # Integrasjonen eier settpunktet: ønsket temperatur, minus borte-senking
+    "manage_setpoint": True,
+    # Brukes når det ikke finnes en entitet for taket
+    "cover_on": False,
+    # Kjør sirkulasjonen når solfangeren har varme å gi
+    "solar_harvest": True,
     # tall
     "turnovers": 1.5,
     "pulse_minutes": 10.0,
@@ -115,8 +132,26 @@ DEFAULT_SETTINGS: dict = {
     "sprinkler_duration": 10.0,
     "sprinkler_interval": 4.0,
     "sprinkler_daily_max": 60.0,
+    "target_temp": 27.0,
+    "away_drop": 2.0,
+    "max_drop": 3.0,
+    "u_open": 15.0,  # W/(m²·K), inkludert fordampning
+    "u_covered": 5.0,
+    "cover_solar": 60.0,  # % av solen som slipper gjennom taket
+    "chlorine_days": 7.0,
     # valg
     "profile": PROFILE_BALANCED,
+    "setback_criterion": "begge",
+}
+
+# Lært av målinger, overlever omstart. Faktorene justerer modellen mot
+# virkeligheten: 1,0 betyr at tabellverdiene stemmer.
+DEFAULT_LEARNED: dict = {
+    "cop_factor": 1.0,
+    "loss_open": 1.0,
+    "loss_covered": 1.0,
+    "cop_samples": 0,
+    "loss_samples": 0,
 }
 
 DEFAULT_COUNTERS: dict = {
@@ -129,6 +164,7 @@ DEFAULT_COUNTERS: dict = {
     "cost_reference": 0.0,  # hva døgndrift ville kostet så langt
     "sprinkler_today": 0.0,  # minutter
     "sprinkler_last": 0.0,  # timestamp
+    "chlorine_total": 0,  # nullstilles ikke ved døgnskifte
 }
 
 # Reserveplan når prisdata mangler: spredt over døgnet, tyngde på dagtid
@@ -144,6 +180,18 @@ SERVICE_START_SPREDER = "start_spreder"
 SERVICE_STOP_SPREDER = "stopp_spreder"
 SERVICE_BOOST = "boost"
 SERVICE_SET_PROFILE = "sett_profil"
+SERVICE_LOG_CHLORINE = "logg_klortablett"
+SERVICE_UNDO_CHLORINE = "angre_klortablett"
 
 ATTR_MINUTES = "minutter"
 ATTR_PROFILE = "profil"
+ATTR_COUNT = "antall"
+ATTR_NOTE = "notat"
+
+# Hvor mange klortablett-innslag som tas vare på
+CHLORINE_HISTORY = 50
+# Vannet regnes som varmebehov når det er så mye under målet
+HEAT_HYSTERESIS = 0.3
+# Solfangeren kan lagre litt over målet før sirkulasjonen stopper
+SOLAR_OVERSHOOT = 1.0
+SOLAR_MIN_IRRADIANCE = 250.0

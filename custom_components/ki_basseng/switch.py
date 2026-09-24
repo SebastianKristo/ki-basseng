@@ -68,6 +68,32 @@ SWITCHES: tuple[KiSwitchDescription, ...] = (
         setting="sprinkler_program",
     ),
     KiSwitchDescription(
+        key="smart_nattsenking",
+        name="Smart nattsenking",
+        icon="mdi:weather-night",
+        setting="smart_setback",
+    ),
+    KiSwitchDescription(
+        key="styr_settpunkt",
+        name="Styr settpunkt",
+        icon="mdi:thermometer-auto",
+        setting="manage_setpoint",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiSwitchDescription(
+        key="pooltak_pa",
+        name="Pooltak på",
+        icon="mdi:pool",
+        setting="cover_on",
+    ),
+    KiSwitchDescription(
+        key="solvarme",
+        name="Solvarme",
+        icon="mdi:solar-power-variant",
+        setting="solar_harvest",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiSwitchDescription(
         key="frostvakt",
         name="Frostvakt",
         icon="mdi:snowflake-alert",

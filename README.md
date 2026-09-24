@@ -53,6 +53,86 @@ i to: pumpen står for basislasten når bryteren er på, resten tilhører
 varmepumpen. Bryterens tilstand brukes som fasit i stedet for terskelen
 alene, så du slipper feilklassifisering i grenselandet rundt 900 W.
 
+### Varmemodellen og smart nattsenking
+
+Integrasjonen har en enkel fysisk modell av bassenget (`termisk.py`) som den
+bruker til å vurdere varmen. Den tar inn:
+
+| Inndata | Hvor den kommer fra |
+|---|---|
+| Sted | Breddegrad og lengdegrad fra Home Assistant. Gir solhøyden time for time |
+| Sol | Solhøyde og skydekke gir innstråling (W/m²) på vannflaten og solfangeren |
+| Vær | Timesvarsel fra en `weather`-entitet: temperatur og skydekke fremover |
+| Strømpris | Timesprisene fra prissensoren, i dag og i morgen |
+| Tid | Varmevinduet bestemmer natten og når bassenget skal være varmt igjen |
+| Tilstedeværelse | Personer, soner eller brytere. Er ingen hjemme, senkes målet |
+| Ønsket temperatur | Et tall i integrasjonen. Den holder varmepumpens settpunkt der |
+| Pooltak | En cover-, binær- eller bryterentitet, eller bryteren *Pooltak på* |
+| Solfanger | Areal i oppsettet. Med solfanger går pumpen når sola gir varme |
+
+Bassenget er et stort varmelager: 41 m³ vann holder 48 kWh per grad. Tapet går
+gjennom vannflaten og øker med forskjellen mellom vann og luft. Tak kutter det
+meste av tapet, men slipper også inn mindre sol.
+
+**Lønner det seg å la varmepumpen stå av i natt?** Kaldere vann taper mindre
+varme, så en senking sparer alltid litt varme. Men varmen må hentes inn igjen, og
+det kan koste mer strøm enn det sparer:
+
+- om morgenen er lufta kaldest, og varmepumpen har lavest COP
+- gjenoppvarmingen kan havne i dyre timer
+- sirkulasjonspumpen (800 W) må gå så lenge varmepumpen jobber
+
+Hvert tiende minutt simulerer integrasjonen natten time for time, fra nå til
+varmevinduet starter. Den regner først ut hva det koster å holde temperaturen,
+og så hvert mulige av-vindu i natt. Et vindu velges bare når:
+
+1. bassenget er tilbake på måltemperaturen før varmevinduet starter,
+2. vannet aldri faller mer enn *Maks nattsenking* under målet, og
+3. vinduet sparer etter kriteriet i *Nattsenking skal spare*:
+   - **begge** (standard): sparer penger og bruker aldri mer strøm totalt
+   - **kostnad**: sparer penger, selv om det går med litt mer strøm
+   - **energi**: sparer kWh, uansett pris
+
+Det som mangler på målet når horisonten slutter, regnes med som strøm som må
+brukes senere. Ellers ville et vindu som bare utsetter oppvarmingen, se ut som
+en besparelse.
+
+I praksis lønner senking seg når natten er kald og formiddagen varm og solrik,
+når taket er av (stort tap) eller når kvelden er dyr og natten billig. En jevn,
+mild natt med flat pris gir som regel *lønner seg ikke*.
+
+Mens senkingen står, er varmepumpen av og krever ikke sirkulasjon.
+Filtreringsplanen går som vanlig. Når vinduet er over, setter sperren
+varmepumpen på igjen så snart sirkulasjonen går. Avbrytes en senking, startes
+ingen ny før det har gått en halvtime.
+
+Sensoren *Nattsenking* viser `aktiv`, `planlagt`, `lonner_seg_ikke` eller `av`.
+Attributtene viser vinduet, begrunnelsen, kWh og kostnad med og uten senking,
+laveste temperatur og de beste alternativene den vurderte.
+
+**Læring.** Modellen justerer seg selv:
+
+- *COP-faktoren* læres fra målt COP (Δt × flow mot varmepumpens effekt).
+- *Tapsfaktorene* læres fra rolige netter. Da går pumpen, varmepumpen står og
+  sola er nede, så temperaturfallet over tre timer viser det faktiske tapet.
+  Med og uten tak læres hver for seg.
+
+Faktorene vises på sensoren *Varmetap*.
+
+**Vanntemperatur.** Når pumpen står, måler følerne vannet som står i røret. Da
+fører modellen temperaturen videre fra siste pålitelige måling. Det estimatet
+brukes i beregningene og vises som `modellestimat`.
+
+### Klortabletter
+
+Trykk *Logg klortablett*, eller kall `ki_basseng.logg_klortablett`, når du legger
+i tabletter. Integrasjonen husker de 50 siste innslagene med tid, antall, notat
+og vanntemperatur, og skriver i loggboka.
+
+*Neste klortablett* regnes ut fra intervallet (7 dager som standard). Intervallet
+blir kortere i varmt vann, fordi klor forbrukes raskere over 24 °C. Ved 32 °C er
+det halvert. *Klortablett bør legges i* slår seg på når det er på tide.
+
 ### Spreder
 
 Hageslangen på hovedkranen med spreder ned i bassenget styres med varighet,
@@ -71,8 +151,8 @@ Oppsettet går i tre steg:
 | Steg | Felt |
 |---|---|
 | Måling | pumpebryter (påkrevd), kombinert effektmåler, eventuelle separate målere, prissensor |
-| Utstyr | varmepumpe, innløp, utløp, utetemperatur, vannventil for spreder |
-| Bassenget | volum, kapasitet, basislast, varmepumpens merkeeffekt, valuta |
+| Utstyr | varmepumpe, innløp, utløp, utetemperatur, vannventil for spreder, værmelding, pooltak, tilstedeværelse |
+| Bassenget | volum, kapasitet, vannflate, solfangerareal, basislast, varmepumpens merkeeffekt, valuta |
 
 For ditt oppsett:
 
@@ -85,8 +165,11 @@ Innløp             sensor.basseng_bassengvarmepumpe_water_inflow_temperature
 Utløp              sensor.basseng_bassengvarmepumpe_water_outflow_temperature
 Vannventil         switch.ute_master_vannventil
 Volum              40.95        (estimatpakken sier 7,3 × 3,3 × 1,7)
+Vannflate          24.1         (7,3 × 3,3)
 Kapasitet          11.3
 Basislast          800
+Værmelding         weather.forecast_hjem
+Tilstedeværelse    person.sebastian (+ resten av husstanden)
 ```
 
 Volumet spriker mellom de to pakkene dine: pumpestyringen regner 35,6 m³,
@@ -100,24 +183,31 @@ Alt havner på enheten **KI Basseng** med prefiks `ki_basseng`.
 **Sensorer:** pumpemodus (med plan, blokker og snittpriser som attributter),
 omsetninger i dag, pumpet volum i dag/totalt, pumpetid i dag, neste
 pumpestart, pumpe- og varmepumpeeffekt, energi i dag for begge, kostnad i
-dag, spart i dag, vanntemperatur, spreder gjenstår.
+dag, spart i dag, vanntemperatur, spreder gjenstår, måltemperatur,
+nattsenking, nattsenking besparelse, varmetap, solinnstråling, siste og neste
+klortablett.
 
 **Binærsensorer:** pumpe skal gå, spreder kjører, manuell overstyring,
-varmepumpe venter.
+varmepumpe venter, nattsenking aktiv, klortablett bør legges i, noen hjemme,
+pooltak.
 
 **Brytere:** automatikk, prisstyring, varmeprioritet, styr varmepumpe, puls
-med varme, spreder-program, frostvakt.
+med varme, spreder-program, frostvakt, smart nattsenking, styr settpunkt,
+pooltak på, solvarme.
 
 **Tall:** omsetninger per døgn, vedlikeholdspuls, minste kjøretid, manuell
 overstyring varer, dagtimer i planen, varmevindu start/slutt, pumpe
-basislast, spreder varighet/intervall/maks per døgn.
+basislast, spreder varighet/intervall/maks per døgn, ønsket temperatur,
+senking når ingen er hjemme, maks nattsenking, varmetap med/uten tak, sol
+gjennom taket, klortablett intervall.
 
-**Valg:** driftsprofil (eco, balansert, badeklar, ferie). Profilen setter
-omsetningsmål og puls i ett grep, og hopper til «egendefinert» hvis du
-justerer noe manuelt etterpå.
+**Valg:** driftsprofil (eco, balansert, badeklar, ferie) og hva nattsenkingen
+skal spare. Profilen setter omsetningsmål og puls i ett grep, og hopper til
+«egendefinert» hvis du justerer noe manuelt etterpå. Ferie regnes som at
+ingen er hjemme.
 
-**Knapper:** start og stopp spreder, boost sirkulasjon, nullstill dagens
-tellere.
+**Knapper:** start og stopp spreder, boost sirkulasjon, logg klortablett,
+angre siste klortablett, nullstill dagens tellere.
 
 ## Tjenester
 
@@ -133,6 +223,13 @@ data:
 action: ki_basseng.sett_profil
 data:
   profil: badeklar
+
+action: ki_basseng.logg_klortablett
+data:
+  antall: 1
+  notat: Flottøren
+
+action: ki_basseng.angre_klortablett
 ```
 
 ## Kortet
@@ -143,7 +240,7 @@ Legg `ki-basseng-card.js` i `/config/www/` og registrer den under
 ```yaml
 type: custom:ki-basseng-card
 tittel: Badebasseng
-faner: [oversikt, sirkulasjon, spreder, innstillinger]
+faner: [oversikt, sirkulasjon, varme, spreder, innstillinger]
 ```
 
 `prefix:` kan utelates — kortet finner entitetene selv. Har du flere
@@ -152,7 +249,9 @@ bassenger, oppgi prefiks for hvert kort.
 Fanen *Oversikt* viser omsetningsringen, vanntemperatur, modus med
 begrunnelse, døgnplanen som en 24-timers stripe med nå-markør, og fire
 nøkkeltall. *Sirkulasjon* har blokkene, profilvalg, steppere for mål og
-puls, og boost. *Spreder* har nedtelling og hurtigvalg. *Innstillinger* har
+puls, og boost. *Varme* har måltemperatur, nattsenkingen med vindu og
+besparelse, steppere for ønsket temperatur og senking, bryter for pooltaket og
+klorloggen med én knapp. *Spreder* har nedtelling og hurtigvalg. *Innstillinger* har
 resten.
 
 Se `examples/badebasseng-popup.yaml` for en bubble-card-popup i samme stil
@@ -171,11 +270,11 @@ de om den samme pumpen:
   `input_text.ki_bassengsprinkler_nedtelling_tekst`)
 - `sensor.ki_basseng_pumpemodus` og pumpedelen av samme pakke
 
-`basseng_estimat.yaml` kan bli stående. Den regner på varmetap,
-oppvarmingstid og nattsenking, og rører ikke sirkulasjonen. Den eneste
-overlappen er at begge kan sette settpunktet på varmepumpen — la
-estimatpakken eie settpunktet, og la denne integrasjonen eie av/på og
-sirkulasjonen.
+Fra 1.3.0 eier integrasjonen også settpunktet og nattsenkingen. Fjern
+nattsenkingen og alt som setter settpunktet i `basseng_estimat.yaml`, ellers
+krangler de om varmepumpen. Resten av estimatpakken kan bli stående. Vil du
+heller la pakken eie settpunktet, slår du av *Styr settpunkt*. Da bruker
+modellen varmepumpens eget settpunkt som mål.
 
 ## Tuning
 
@@ -186,6 +285,13 @@ sirkulasjonen.
   bare sirkulasjonspumpen går, og sett *Pumpe basislast* til den verdien.
 - **Varmepumpen starter ikke igjen.** Sjekk at *Styr varmepumpe* er på og at
   pumpen har gått sammenhengende i over to minutter.
+- **Nattsenkingen slår aldri til.** Se på attributtene til *Nattsenking*.
+  Står det «rekker ikke å varme opp igjen», flytter du *Varmevindu start*
+  senere. Står det «koster like mye som den sparer», gjør den jobben sin.
+- **Modellen bommer på temperaturen.** Juster *Varmetap uten tak* og *Med tak*.
+  Tapsfaktorene læres over tid, men startverdien avgjør hvor fort de treffer.
+  Med bassengduk er 3–6 W/m²K typisk. Uten tak er 10–25 W/m²K typisk,
+  avhengig av vind.
 
 ## Lisens
 

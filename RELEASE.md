@@ -1,3 +1,53 @@
+# KI Basseng 1.3.0
+
+## Smart nattsenking: av bare når det lønner seg
+
+Den nye varmemodellen (`termisk.py`) simulerer bassenget time for time. Den tar
+inn sted og sol, timesvarsel fra en `weather`-entitet, strømpris, tid, om noen
+er hjemme, ønsket temperatur, om pooltaket ligger på, og en eventuell solfanger.
+
+Hvert tiende minutt sammenligner den to ting: å holde temperaturen hele natten,
+og hvert mulige av-vindu frem til varmevinduet starter. Varmepumpen slås av bare
+når et vindu gir badeklart vann i tide og holder seg innenfor maks senking. I
+tillegg må det spare etter valgt kriterium. Standard er at det skal spare penger,
+men aldri bruke mer strøm totalt. Det som mangler på målet til slutt, regnes med,
+så det å utsette oppvarmingen teller aldri som en besparelse.
+
+Modellen lærer COP fra målt Δt, og varmetapet med og uten tak fra rolige netter.
+
+## Ønsket temperatur, borte-senking og pooltak
+
+* **Ønsket temperatur** eier nå varmepumpens settpunkt (bryteren *Styr
+  settpunkt*).
+* **Borte-senking:** er ingen hjemme, eller står profilen på ferie, senkes målet
+  med 2 °C (justerbart).
+* **Pooltak:** tilstanden hentes fra en cover-, binær- eller bryterentitet, eller
+  fra bryteren *Pooltak på*. Taket endrer både varmetap og solinnslipp.
+* **Solfanger:** har du oppgitt et areal, går sirkulasjonen når sola gir varme.
+  Den stopper 1 °C over målet. Ny pumpemodus: `solvarme`.
+* Varmeprioriteten starter nå pumpen når vannet er 0,3 °C under målet og
+  varmepumpen venter på sirkulasjon. Før ventet den på at pumpen startet av
+  andre grunner.
+
+## Klortabletter
+
+Ny knapp og tjeneste `logg_klortablett` (antall og notat), og `angre_klortablett`.
+Sensorene *Siste klortablett* og *Neste klortablett*, og en binærsensor som sier
+fra når det er på tide. I varmt vann blir intervallet kortere.
+
+## Kortet
+
+Ny fane **Varme** med måltemperatur, nattsenking, steppere, pooltak og klorlogg.
+
+## Opprydding
+
+* Én versjon overalt (1.3.0). `const.VERSION` hang igjen på 1.0.1.
+* Prisene leses én gang per tikk. Før ble de lest opp til tre ganger.
+* Loggboka brukes bare hvis den finnes, så styringen stopper aldri på den.
+* 27 nye tester for modellen og integrasjonen i en ekte Home Assistant.
+
+---
+
 # KI Basseng 1.1.0
 
 ## Varmepumpa settes tilbake til «heat» når den går i «auto»

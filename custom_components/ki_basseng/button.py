@@ -42,6 +42,19 @@ BUTTONS: tuple[KiButtonDescription, ...] = (
         action=lambda c: c.async_boost(30),
     ),
     KiButtonDescription(
+        key="logg_klortablett",
+        name="Logg klortablett",
+        icon="mdi:pill",
+        action=lambda c: c.async_log_chlorine(1),
+    ),
+    KiButtonDescription(
+        key="angre_klortablett",
+        name="Angre siste klortablett",
+        icon="mdi:undo",
+        entity_category=EntityCategory.CONFIG,
+        action=lambda c: c.async_undo_chlorine(),
+    ),
+    KiButtonDescription(
         key="nullstill_i_dag",
         name="Nullstill dagens tellere",
         icon="mdi:backup-restore",

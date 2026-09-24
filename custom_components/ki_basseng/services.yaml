@@ -45,3 +45,27 @@ sett_profil:
             - balansert
             - badeklar
             - ferie
+
+logg_klortablett:
+  name: Logg klortablett
+  description: Noterer at det er lagt klortabletter i bassenget eller flottøren.
+  fields:
+    antall:
+      name: Antall
+      description: Hvor mange tabletter.
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 20
+    notat:
+      name: Notat
+      description: Valgfritt, for eksempel merke eller hvor den ble lagt.
+      required: false
+      example: Flottøren, 200 g
+      selector:
+        text:
+
+angre_klortablett:
+  name: Angre siste klortablett
+  description: Fjerner siste innslag i klorloggen.

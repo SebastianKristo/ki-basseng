@@ -56,6 +56,40 @@ BINARY_SENSORS: tuple[KiBinaryDescription, ...] = (
         attrs=lambda d: {"til": d.get("override_until")},
     ),
     KiBinaryDescription(
+        key="nattsenking_aktiv",
+        name="Nattsenking aktiv",
+        icon="mdi:weather-night",
+        value=lambda d: d.get("setback_active"),
+        attrs=lambda d: {
+            "fra": (d.get("setback") or {}).get("start"),
+            "til": (d.get("setback") or {}).get("end"),
+            "begrunnelse": (d.get("setback") or {}).get("reason"),
+        },
+    ),
+    KiBinaryDescription(
+        key="klortablett_bor_legges_i",
+        name="Klortablett bør legges i",
+        icon="mdi:pill",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value=lambda d: (d.get("chlorine") or {}).get("due"),
+        attrs=lambda d: {
+            "neste": (d.get("chlorine") or {}).get("next"),
+            "dager_siden": (d.get("chlorine") or {}).get("days_since"),
+        },
+    ),
+    KiBinaryDescription(
+        key="noen_hjemme",
+        name="Noen hjemme",
+        device_class=BinarySensorDeviceClass.PRESENCE,
+        value=lambda d: d.get("present"),
+    ),
+    KiBinaryDescription(
+        key="pooltak",
+        name="Pooltak",
+        icon="mdi:pool",
+        value=lambda d: d.get("covered"),
+    ),
+    KiBinaryDescription(
         key="varmepumpe_venter",
         name="Varmepumpe venter",
         icon="mdi:heat-pump-outline",
