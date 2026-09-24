@@ -58,6 +58,13 @@ logg_klortablett:
         number:
           min: 1
           max: 20
+    hvem:
+      name: Hvem
+      description: Den som la i tabletten. Navnene settes i «Navn i klorloggen».
+      required: false
+      example: Sebastian
+      selector:
+        text:
     notat:
       name: Notat
       description: Valgfritt, for eksempel merke eller hvor den ble lagt.

@@ -79,6 +79,16 @@ SETBACK_HOLD_S = 1800
 LOSS_WINDOW_S = 3 * 3600
 
 
+def split_names(raw: Any) -> list[str]:
+    """«Sebastian, Ida ,sebastian» → ["Sebastian", "Ida"]: trimmet, uten duplikater."""
+    names: list[str] = []
+    for part in str(raw or "").replace(";", ",").split(","):
+        name = part.strip()
+        if name and name.lower() not in (n.lower() for n in names):
+            names.append(name)
+    return names
+
+
 def _f(value: Any, default: Any = 0.0) -> Any:
     try:
         return float(value)
@@ -1017,13 +1027,20 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
     # ------------------------------------------------------------------
     # Klortabletter
     # ------------------------------------------------------------------
-    async def async_log_chlorine(self, count: int = 1, note: str = "") -> None:
+    @property
+    def chlorine_names(self) -> list[str]:
+        return split_names(self.settings.get("chlorine_names", ""))
+
+    async def async_log_chlorine(
+        self, count: int = 1, note: str = "", who: str = ""
+    ) -> None:
         now = dt_util.now()
         self.chlorine.append(
             {
                 "tid": now.isoformat(),
                 "antall": int(count),
                 "notat": note or "",
+                "hvem": (who or "").strip(),
                 "vanntemp": round(self._temp_est, 1) if self._temp_est is not None else None,
             }
         )
@@ -1031,8 +1048,10 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         self.counters["chlorine_total"] = int(self.counters.get("chlorine_total", 0)) + int(count)
         self._save_pending = True
         flertall = "er" if count != 1 else ""
+        hvem = f" av {who.strip()}" if who and who.strip() else ""
         await self._logbook(
-            f"{int(count)} klortablett{flertall} lagt i" + (f": {note}" if note else "")
+            f"{int(count)} klortablett{flertall} lagt i{hvem}"
+            + (f": {note}" if note else "")
         )
         await self.async_request_refresh()
 
@@ -1056,10 +1075,14 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         next_at = last + timedelta(days=interval) if last else None
         week_ago = now - timedelta(days=7)
         week = 0
+        per_person: dict[str, int] = {}
         for row in self.chlorine:
             stamp = dt_util.parse_datetime(str(row.get("tid")))
             if stamp and stamp >= week_ago:
                 week += int(row.get("antall", 1))
+            who = row.get("hvem") or ""
+            if who:
+                per_person[who] = per_person.get(who, 0) + int(row.get("antall", 1))
         return {
             "last": last,
             "next": next_at,
@@ -1068,6 +1091,13 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             "week": week,
             "total": int(self.counters.get("chlorine_total", 0)),
             "history": list(reversed(self.chlorine[-10:])),
+            # Kompakt logg til kalenderen i kortet: dato, antall og hvem
+            "log": [
+                {"tid": r.get("tid"), "antall": r.get("antall", 1), "hvem": r.get("hvem", "")}
+                for r in self.chlorine
+            ],
+            "names": self.chlorine_names,
+            "per_person": per_person,
             "days_since": round((now - last).total_seconds() / 86400, 1) if last else None,
         }
 
