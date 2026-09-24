@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "ki_basseng"
 NAME = "KI Basseng"
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 STORAGE_VERSION = 1
 
 PLATFORMS: list[Platform] = [

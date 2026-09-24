@@ -65,9 +65,9 @@ bruker til å vurdere varmen. Den tar inn:
 | Vær | Timesvarsel fra en `weather`-entitet: temperatur og skydekke fremover |
 | Strømpris | Timesprisene fra prissensoren, i dag og i morgen |
 | Tid | Varmevinduet bestemmer natten og når bassenget skal være varmt igjen |
-| Tilstedeværelse | Personer, soner eller brytere. Er ingen hjemme, senkes målet |
+| Tilstedeværelse | Personer, soner eller brytere («på» er hjemme). Er ingen hjemme, senkes målet |
 | Ønsket temperatur | Et tall i integrasjonen. Den holder varmepumpens settpunkt der |
-| Pooltak | En cover-, binær- eller bryterentitet, eller bryteren *Pooltak på* |
+| Pooltak | Bryteren *Pooltak på*. Har taket en egen entitet (cover, binær, bryter), kan den brukes i stedet |
 | Solfanger | Areal i oppsettet. Med solfanger går pumpen når sola gir varme |
 
 Bassenget er et stort varmelager: 41 m³ vann holder 48 kWh per grad. Tapet går
@@ -188,8 +188,7 @@ nattsenking, nattsenking besparelse, varmetap, solinnstråling, siste og neste
 klortablett.
 
 **Binærsensorer:** pumpe skal gå, spreder kjører, manuell overstyring,
-varmepumpe venter, nattsenking aktiv, klortablett bør legges i, noen hjemme,
-pooltak.
+varmepumpe venter, nattsenking aktiv, klortablett bør legges i, noen hjemme.
 
 **Brytere:** automatikk, prisstyring, varmeprioritet, styr varmepumpe, puls
 med varme, spreder-program, frostvakt, smart nattsenking, styr settpunkt,

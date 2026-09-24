@@ -201,3 +201,29 @@ async def test_nattsenking_beregnes(hass, oppsett):
     state = hass.states.get(_id(hass, "sensor", "nattsenking"))
     assert state.state in ("aktiv", "planlagt", "lonner_seg_ikke")
     assert state.attributes["begrunnelse"]
+
+
+async def test_bryter_som_tilstedevaerelse(hass, oppsett):
+    """En vanlig bryter kan brukes som tilstedeværelse: «på» betyr hjemme."""
+    k, _ = oppsett
+    k.entry.update_listeners.clear()
+    hass.config_entries.async_update_entry(
+        k.entry, options={CONF_PRESENCE: ["switch.gjester"]}
+    )
+    hass.states.async_set("switch.gjester", "on")
+    assert k.present()
+    hass.states.async_set("switch.gjester", "off")
+    assert not k.present()
+
+
+async def test_pooltak_uten_entitet_styres_av_bryteren(hass, oppsett):
+    k, _ = oppsett
+    k.entry.update_listeners.clear()
+    data = {key: v for key, v in k.entry.data.items() if key != CONF_COVER}
+    hass.config_entries.async_update_entry(k.entry, data=data)
+    bryter = _id(hass, "switch", "pooltak_pa")
+    await hass.services.async_call("switch", "turn_on", {"entity_id": bryter}, blocking=True)
+    assert k.settings["cover_on"] is True
+    assert k.covered()
+    await hass.services.async_call("switch", "turn_off", {"entity_id": bryter}, blocking=True)
+    assert not k.covered()

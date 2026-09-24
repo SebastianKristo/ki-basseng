@@ -22,8 +22,8 @@
           "outdoor_sensor": "Utetemperatur",
           "valve_switch": "Vannventil for spreder",
           "weather_entity": "Værmelding (temperatur og skydekke fremover)",
-          "cover_entity": "Pooltak / bassengduk",
-          "presence_entities": "Tilstedeværelse (personer, soner)"
+          "cover_entity": "Pooltak-entitet (valgfritt – uten den styres taket med bryteren «Pooltak på»)",
+          "presence_entities": "Tilstedeværelse (personer, soner eller brytere – «på» betyr hjemme)"
         }
       },
       "basseng": {
@@ -73,8 +73,8 @@
           "outdoor_sensor": "Utetemperatur",
           "valve_switch": "Vannventil for spreder",
           "weather_entity": "Værmelding (temperatur og skydekke fremover)",
-          "cover_entity": "Pooltak / bassengduk",
-          "presence_entities": "Tilstedeværelse (personer, soner)"
+          "cover_entity": "Pooltak-entitet (valgfritt – uten den styres taket med bryteren «Pooltak på»)",
+          "presence_entities": "Tilstedeværelse (personer, soner eller brytere – «på» betyr hjemme)"
         }
       },
       "basseng": {

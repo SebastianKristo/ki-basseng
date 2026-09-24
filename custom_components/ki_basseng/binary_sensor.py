@@ -84,12 +84,6 @@ BINARY_SENSORS: tuple[KiBinaryDescription, ...] = (
         value=lambda d: d.get("present"),
     ),
     KiBinaryDescription(
-        key="pooltak",
-        name="Pooltak",
-        icon="mdi:pool",
-        value=lambda d: d.get("covered"),
-    ),
-    KiBinaryDescription(
         key="varmepumpe_venter",
         name="Varmepumpe venter",
         icon="mdi:heat-pump-outline",

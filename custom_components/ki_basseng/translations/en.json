@@ -22,8 +22,8 @@
           "outdoor_sensor": "Outdoor temperature",
           "valve_switch": "Sprinkler water valve",
           "weather_entity": "Weather forecast (temperature and cloud cover)",
-          "cover_entity": "Pool cover",
-          "presence_entities": "Presence (people, zones)"
+          "cover_entity": "Pool cover entity (optional – without it, use the «Pooltak på» switch)",
+          "presence_entities": "Presence (people, zones or switches – «on» means home)"
         }
       },
       "basseng": {
@@ -73,8 +73,8 @@
           "outdoor_sensor": "Outdoor temperature",
           "valve_switch": "Sprinkler water valve",
           "weather_entity": "Weather forecast (temperature and cloud cover)",
-          "cover_entity": "Pool cover",
-          "presence_entities": "Presence (people, zones)"
+          "cover_entity": "Pool cover entity (optional – without it, use the «Pooltak på» switch)",
+          "presence_entities": "Presence (people, zones or switches – «on» means home)"
         }
       },
       "basseng": {

@@ -339,7 +339,7 @@ def optimise_setback(
     decision.saving_cost = round(baseline.cost - res.cost, 2)
     decision.reason = (
         f"Av {decision.start:%H:%M}–{decision.end:%H:%M} sparer "
-        f"{decision.saving_kwh:.1f} kWh"
+        f"{decision.saving_kwh:.1f} kWh".replace(".", ",")
     )
     return decision
 
