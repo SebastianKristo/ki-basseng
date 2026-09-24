@@ -227,3 +227,31 @@ async def test_pooltak_uten_entitet_styres_av_bryteren(hass, oppsett):
     assert k.covered()
     await hass.services.async_call("switch", "turn_off", {"entity_id": bryter}, blocking=True)
     assert not k.covered()
+
+
+async def test_navn_i_klorloggen_og_hvem(hass, oppsett):
+    """Navnene settes i tekstfeltet; loggen husker hvem som la i."""
+    k, kall = oppsett
+    felt = _id(hass, "text", "navn_i_klorloggen")
+    await hass.services.async_call(
+        "text", "set_value", {"entity_id": felt, "value": " Sebastian, ida ,Ida;Ola"},
+        blocking=True,
+    )
+    assert k.chlorine_names == ["Sebastian", "ida", "Ola"]
+    await hass.services.async_call(
+        DOMAIN, "logg_klortablett", {"hvem": "Sebastian"}, blocking=True
+    )
+    await k.async_refresh()
+    siste = hass.states.get(_id(hass, "sensor", "siste_klortablett")).attributes
+    assert siste["historikk"][0]["hvem"] == "Sebastian"
+    assert siste["logg"][-1]["hvem"] == "Sebastian"
+    assert siste["navn"] == ["Sebastian", "ida", "Ola"]
+    assert siste["per_person"] == {"Sebastian": 1}
+    assert any("av Sebastian" in c.data["message"] for c in kall["logg"])
+
+
+def test_split_names():
+    from custom_components.ki_basseng.coordinator import split_names
+
+    assert split_names("") == []
+    assert split_names("A, b ,a;;C") == ["A", "b", "C"]

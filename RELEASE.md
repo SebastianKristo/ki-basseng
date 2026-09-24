@@ -1,3 +1,21 @@
+# KI Basseng 1.4.0
+
+## Hvem la i klortabletten?
+
+* **Navn i klorloggen:** et nytt tekstfelt, `text.ki_basseng_navn_i_klorloggen`, der du skriver
+  hvem som kan legge i klortabletter, med komma mellom: «Sebastian, Ida». Mellomrom og
+  dubletter ryddes bort. Kortet viser navnene som knapper du huker av før du logger, og
+  navnene kan legges til og fjernes under tannhjulet i kortet.
+* **`logg_klortablett` har fått feltet `hvem`.** Navnet lagres i loggen og står i loggboka:
+  «1 klortablett lagt i av Sebastian».
+* **Mer i *Siste klortablett*:**
+  * `logg`: alle de siste 50 innslagene, med dato, antall og hvem. Det er dette kalenderen
+    i kortet tegner fra.
+  * `navn`: navnene fra tekstfeltet.
+  * `per_person`: hvor mange tabletter hver person har lagt i.
+
+---
+
 # KI Basseng 1.3.1
 
 * **Tilstedeværelse kan være en bryter.** Feltet godtar nå `switch` i tillegg til personer,

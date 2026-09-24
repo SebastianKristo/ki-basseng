@@ -126,7 +126,8 @@ brukes i beregningene og vises som `modellestimat`.
 ### Klortabletter
 
 Trykk *Logg klortablett*, eller kall `ki_basseng.logg_klortablett`, når du legger
-i tabletter. Integrasjonen husker de 50 siste innslagene med tid, antall, notat
+i tabletter. Skriv navnene i husstanden i *Navn i klorloggen* («Sebastian, Ida»), så kan
+du huke av hvem som la i. Navnet kommer med i loggen, og tjenesten tar det som `hvem:`. Integrasjonen husker de 50 siste innslagene med tid, antall, notat
 og vanntemperatur, og skriver i loggboka.
 
 *Neste klortablett* regnes ut fra intervallet (7 dager som standard). Intervallet
@@ -226,6 +227,7 @@ data:
 action: ki_basseng.logg_klortablett
 data:
   antall: 1
+  hvem: Sebastian
   notat: Flottøren
 
 action: ki_basseng.angre_klortablett

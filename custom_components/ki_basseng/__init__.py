@@ -14,6 +14,7 @@ from .const import (
     ATTR_MINUTES,
     ATTR_NOTE,
     ATTR_PROFILE,
+    ATTR_WHO,
     DOMAIN,
     PLATFORMS,
     PROFILE_OPTIONS,
@@ -94,7 +95,9 @@ def _register_services(hass: HomeAssistant) -> None:
     async def logg_klortablett(call: ServiceCall) -> None:
         for coordinator in _coordinators(hass, call):
             await coordinator.async_log_chlorine(
-                call.data.get(ATTR_COUNT, 1), call.data.get(ATTR_NOTE, "")
+                call.data.get(ATTR_COUNT, 1),
+                call.data.get(ATTR_NOTE, ""),
+                call.data.get(ATTR_WHO, ""),
             )
 
     async def angre_klortablett(call: ServiceCall) -> None:
@@ -112,6 +115,7 @@ def _register_services(hass: HomeAssistant) -> None:
                     vol.Coerce(int), vol.Range(min=1, max=20)
                 ),
                 vol.Optional(ATTR_NOTE, default=""): cv.string,
+                vol.Optional(ATTR_WHO, default=""): cv.string,
             }
         ),
     )

@@ -308,6 +308,9 @@ SENSORS: tuple[KiSensorDescription, ...] = (
             "siste_7_dager": (d.get("chlorine") or {}).get("week"),
             "totalt": (d.get("chlorine") or {}).get("total"),
             "historikk": (d.get("chlorine") or {}).get("history"),
+            "logg": (d.get("chlorine") or {}).get("log"),
+            "navn": (d.get("chlorine") or {}).get("names"),
+            "per_person": (d.get("chlorine") or {}).get("per_person"),
         },
     ),
     KiSensorDescription(

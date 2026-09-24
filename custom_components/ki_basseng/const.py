@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "ki_basseng"
 NAME = "KI Basseng"
-VERSION = "1.3.1"
+VERSION = "1.4.0"
 STORAGE_VERSION = 1
 
 PLATFORMS: list[Platform] = [
@@ -16,6 +16,7 @@ PLATFORMS: list[Platform] = [
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.TEXT,
 ]
 
 # --------------------------------------------------------------------------
@@ -139,6 +140,8 @@ DEFAULT_SETTINGS: dict = {
     "u_covered": 5.0,
     "cover_solar": 60.0,  # % av solen som slipper gjennom taket
     "chlorine_days": 7.0,
+    # Hvem som kan legge i klortabletter, kommaseparert: «Sebastian, Ida»
+    "chlorine_names": "",
     # valg
     "profile": PROFILE_BALANCED,
     "setback_criterion": "begge",
@@ -187,6 +190,7 @@ ATTR_MINUTES = "minutter"
 ATTR_PROFILE = "profil"
 ATTR_COUNT = "antall"
 ATTR_NOTE = "notat"
+ATTR_WHO = "hvem"
 
 # Hvor mange klortablett-innslag som tas vare på
 CHLORINE_HISTORY = 50
