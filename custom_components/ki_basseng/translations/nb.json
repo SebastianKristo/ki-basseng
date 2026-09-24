@@ -20,7 +20,10 @@
           "inflow_sensor": "Innløpstemperatur",
           "outflow_sensor": "Utløpstemperatur",
           "outdoor_sensor": "Utetemperatur",
-          "valve_switch": "Vannventil for spreder"
+          "valve_switch": "Vannventil for spreder",
+          "weather_entity": "Værmelding (temperatur og skydekke fremover)",
+          "cover_entity": "Pooltak / bassengduk",
+          "presence_entities": "Tilstedeværelse (personer, soner)"
         }
       },
       "basseng": {
@@ -31,7 +34,9 @@
           "flow_m3h": "Pumpekapasitet",
           "pump_baseline_w": "Pumpens basislast",
           "hp_nominal_w": "Varmepumpens merkeeffekt",
-          "currency": "Valuta"
+          "currency": "Valuta",
+          "surface_m2": "Vannflate",
+          "collector_m2": "Solfangerareal (0 = ingen)"
         }
       }
     },
@@ -66,7 +71,10 @@
           "inflow_sensor": "Innløpstemperatur",
           "outflow_sensor": "Utløpstemperatur",
           "outdoor_sensor": "Utetemperatur",
-          "valve_switch": "Vannventil for spreder"
+          "valve_switch": "Vannventil for spreder",
+          "weather_entity": "Værmelding (temperatur og skydekke fremover)",
+          "cover_entity": "Pooltak / bassengduk",
+          "presence_entities": "Tilstedeværelse (personer, soner)"
         }
       },
       "basseng": {
@@ -76,7 +84,9 @@
           "flow_m3h": "Pumpekapasitet",
           "pump_baseline_w": "Pumpens basislast",
           "hp_nominal_w": "Varmepumpens merkeeffekt",
-          "currency": "Valuta"
+          "currency": "Valuta",
+          "surface_m2": "Vannflate",
+          "collector_m2": "Solfangerareal (0 = ingen)"
         }
       }
     }
@@ -91,7 +101,16 @@
           "filtrering": "Filtrering",
           "oppvarming": "Oppvarming",
           "boost": "Boost",
-          "spreder": "Spreder"
+          "spreder": "Spreder",
+          "solvarme": "Solvarme"
+        }
+      },
+      "nattsenking": {
+        "state": {
+          "av": "Av",
+          "aktiv": "Aktiv",
+          "planlagt": "Planlagt",
+          "lonner_seg_ikke": "Lønner seg ikke"
         }
       }
     },
@@ -103,6 +122,13 @@
           "badeklar": "Badeklar",
           "ferie": "Ferie",
           "egendefinert": "Egendefinert"
+        }
+      },
+      "nattsenking_kriterium": {
+        "state": {
+          "begge": "Penger, men ikke mer strøm",
+          "kostnad": "Penger",
+          "energi": "Strøm (kWh)"
         }
       }
     },

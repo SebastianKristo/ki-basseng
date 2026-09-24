@@ -22,7 +22,10 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_AREA,
     CONF_CLIMATE,
+    CONF_COLLECTOR_AREA,
+    CONF_COVER,
     CONF_CURRENCY,
     CONF_FLOW,
     CONF_HP_NOMINAL,
@@ -31,12 +34,16 @@ from .const import (
     CONF_OUTDOOR,
     CONF_OUTFLOW,
     CONF_POWER_SENSOR,
+    CONF_PRESENCE,
     CONF_PRICE_SENSOR,
     CONF_PUMP_BASELINE,
     CONF_PUMP_POWER_SENSOR,
     CONF_PUMP_SWITCH,
     CONF_VALVE,
     CONF_VOLUME,
+    CONF_WEATHER,
+    DEFAULT_AREA,
+    DEFAULT_COLLECTOR_AREA,
     DEFAULT_CURRENCY,
     DEFAULT_FLOW,
     DEFAULT_HP_NOMINAL,
@@ -47,8 +54,10 @@ from .const import (
 )
 
 
-def _entity(domain: str | list[str], device_class: str | None = None) -> EntitySelector:
-    config: dict[str, Any] = {"domain": domain}
+def _entity(
+    domain: str | list[str], device_class: str | None = None, multiple: bool = False
+) -> EntitySelector:
+    config: dict[str, Any] = {"domain": domain, "multiple": multiple}
     if device_class:
         config["device_class"] = device_class
     return EntitySelector(EntitySelectorConfig(**config))
@@ -83,6 +92,14 @@ UTSTYR_SCHEMA = vol.Schema(
         vol.Optional(CONF_OUTFLOW): _entity("sensor", "temperature"),
         vol.Optional(CONF_OUTDOOR): _entity("sensor", "temperature"),
         vol.Optional(CONF_VALVE): _entity(["switch", "valve", "input_boolean"]),
+        vol.Optional(CONF_WEATHER): _entity("weather"),
+        vol.Optional(CONF_COVER): _entity(
+            ["cover", "binary_sensor", "switch", "input_boolean"]
+        ),
+        vol.Optional(CONF_PRESENCE): _entity(
+            ["person", "device_tracker", "group", "zone", "binary_sensor", "input_boolean"],
+            multiple=True,
+        ),
     }
 )
 
@@ -96,6 +113,13 @@ def _basseng_schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Required(
                 CONF_FLOW, default=defaults.get(CONF_FLOW, DEFAULT_FLOW)
             ): _number(1, 60, 0.1, "m³/t"),
+            vol.Required(
+                CONF_AREA, default=defaults.get(CONF_AREA, DEFAULT_AREA)
+            ): _number(1, 500, 0.1, "m²"),
+            vol.Required(
+                CONF_COLLECTOR_AREA,
+                default=defaults.get(CONF_COLLECTOR_AREA, DEFAULT_COLLECTOR_AREA),
+            ): _number(0, 100, 0.5, "m²"),
             vol.Required(
                 CONF_PUMP_BASELINE,
                 default=defaults.get(CONF_PUMP_BASELINE, DEFAULT_PUMP_BASELINE),

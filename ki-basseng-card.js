@@ -1,10 +1,10 @@
 /*!
- * ki-basseng-card 1.0.0
+ * ki-basseng-card 1.3.0
  * Kort for integrasjonen ki_basseng: sirkulasjon, varme og spreder.
  * Ingen byggesteg – legg fila i /config/www og legg den til som modul.
  */
 
-const KIB_VERSION = "1.0.0";
+const KIB_VERSION = "1.3.0";
 
 const LitBase =
   customElements.get("ha-panel-lovelace") ||
@@ -36,11 +36,19 @@ const KEYS = {
   spart: ["sensor", ["spart_i_dag"]],
   vanntemp: ["sensor", ["vanntemperatur"]],
   spredertid: ["sensor", ["spreder_gjenstar"]],
+  maltemp: ["sensor", ["maltemperatur"]],
+  nattsenking: ["sensor", ["nattsenking"]],
+  varmetap: ["sensor", ["varmetap"]],
+  sol: ["sensor", ["solinnstraling"]],
+  sisteKlor: ["sensor", ["siste_klortablett"]],
+  nesteKlor: ["sensor", ["neste_klortablett"]],
 
   skalGa: ["binary_sensor", ["pumpe_skal_ga"]],
   spreder: ["binary_sensor", ["spreder_kjorer"]],
   overstyrt: ["binary_sensor", ["manuell_overstyring"]],
   vpVenter: ["binary_sensor", ["varmepumpe_venter"]],
+  klorForfall: ["binary_sensor", ["klortablett_bor_legges_i"]],
+  hjemme: ["binary_sensor", ["noen_hjemme"]],
 
   auto: ["switch", ["automatikk"]],
   pris: ["switch", ["prisstyring"]],
@@ -49,6 +57,9 @@ const KEYS = {
   pulsVarme: ["switch", ["puls_med_varme"]],
   spredprogram: ["switch", ["spreder_program"]],
   frostvakt: ["switch", ["frostvakt"]],
+  smartSenking: ["switch", ["smart_nattsenking"]],
+  pooltak: ["switch", ["pooltak_pa"]],
+  styrSettpunkt: ["switch", ["styr_settpunkt"]],
 
   mal: ["number", ["omsetninger_per_dogn", "omsetninger_mal"]],
   puls: ["number", ["vedlikeholdspuls"]],
@@ -61,12 +72,16 @@ const KEYS = {
   spredVarighet: ["number", ["spreder_varighet"]],
   spredIntervall: ["number", ["spreder_intervall"]],
   spredMaks: ["number", ["spreder_maks_per_dogn", "spreder_maks"]],
+  onsketTemp: ["number", ["onsket_temperatur"]],
+  borteSenking: ["number", ["senking_nar_ingen_er_hjemme", "borte_senking"]],
+  maksSenking: ["number", ["maks_nattsenking"]],
 
   profil: ["select", ["driftsprofil"]],
   startSpreder: ["button", ["start_spreder"]],
   stoppSpreder: ["button", ["stopp_spreder"]],
   boost: ["button", ["boost_sirkulasjon"]],
   nullstill: ["button", ["nullstill_dagens_tellere", "nullstill_i_dag"]],
+  loggKlor: ["button", ["logg_klortablett"]],
 };
 
 const MODUS_TEKST = {
@@ -77,6 +92,7 @@ const MODUS_TEKST = {
   manuell: "Manuell",
   boost: "Boost",
   spreder: "Spreder",
+  solvarme: "Solvarme",
 };
 
 const MODUS_FARGE = {
@@ -85,6 +101,7 @@ const MODUS_FARGE = {
   vedlikehold: "var(--kib-accent)",
   boost: "var(--kib-accent)",
   spreder: "var(--kib-blue)",
+  solvarme: "var(--kib-orange)",
   hvile: "var(--kib-muted)",
   manuell: "var(--kib-red)",
 };
@@ -95,6 +112,13 @@ const PROFIL_TEKST = {
   badeklar: "Badeklar",
   ferie: "Ferie",
   egendefinert: "Egen",
+};
+
+const SENKING_TEKST = {
+  av: "Av",
+  aktiv: "Varmepumpa står av",
+  planlagt: "Planlagt i natt",
+  lonner_seg_ikke: "Lønner seg ikke i natt",
 };
 
 const nf = (v, d = 1) =>
@@ -127,7 +151,7 @@ class KiBassengCard extends LitElement {
   setConfig(config) {
     this._config = {
       tittel: "Badebasseng",
-      faner: ["oversikt", "sirkulasjon", "spreder", "innstillinger"],
+      faner: ["oversikt", "sirkulasjon", "varme", "spreder", "innstillinger"],
       ...config,
     };
     this._fane = this._config.fane || this._config.faner[0];
@@ -357,7 +381,7 @@ class KiBassengCard extends LitElement {
           minute: "2-digit",
         });
       }
-    } else if (["filtrering", "oppvarming", "boost"].includes(modus)) {
+    } else if (["filtrering", "oppvarming", "boost", "solvarme"].includes(modus)) {
       nesteTekst = "pågår";
     }
 
@@ -500,6 +524,96 @@ class KiBassengCard extends LitElement {
     `;
   }
 
+  _varme() {
+    const senking = this.val("nattsenking", "av");
+    const fra = this.attr("nattsenking", "fra");
+    const til = this.attr("nattsenking", "til");
+    const sparKwh = this.attr("nattsenking", "spart_kwh");
+    const sparKost = this.attr("nattsenking", "spart_kostnad");
+    const valuta = this.enhet("kostnad") || "";
+    const estimat = this.attr("maltemp", "estimert_vanntemperatur");
+    const siste = this.val("sisteKlor");
+    const dagerSiden = this.attr("sisteKlor", "dager_siden");
+    const neste = this.val("nesteKlor");
+    const dato = (v) => {
+      const d = new Date(v);
+      return isNaN(d)
+        ? "–"
+        : d.toLocaleString("nb-NO", {
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+    };
+
+    return html`
+      <div class="ruter">
+        ${this._rute(
+          "mdi:thermometer-check",
+          `${nf(this.val("maltemp"), 1)} °C`,
+          this.st("hjemme") && !this.on("hjemme") ? "Mål (borte)" : "Mål",
+          "maltemp"
+        )}
+        ${this._rute("mdi:pool-thermometer", `${nf(estimat, 1)} °C`, "Vann nå", "vanntemp")}
+        ${this._rute("mdi:waves-arrow-up", `${nf(this.val("varmetap"), 0)} W`, "Varmetap", "varmetap")}
+        ${this._rute("mdi:weather-sunny", `${nf(this.val("sol"), 0)} W/m²`, "Sol", "sol")}
+      </div>
+
+      <div class="blokk">
+        <div class="blokk-tittel">Nattsenking</div>
+        <div class="rad" @click=${() => this._mer("nattsenking")}>
+          <span>${SENKING_TEKST[senking] || senking}</span>
+          <span class="tall">${fra && til ? `${fra}–${til}` : ""}</span>
+        </div>
+        ${sparKwh
+          ? html`<div class="rad">
+              <span>Sparer</span>
+              <span class="tall">${nf(sparKwh, 1)} kWh · ${nf(sparKost, 2)} ${valuta}</span>
+            </div>`
+          : ""}
+        <div class="hint">${this.attr("nattsenking", "begrunnelse") || ""}</div>
+      </div>
+
+      <div class="blokk">
+        ${this._stepper("onsketTemp", "Ønsket temperatur", 0.5, 1, " °C")}
+        ${this._stepper("borteSenking", "Senking når ingen er hjemme", 0.5, 1, " °C")}
+        ${this._stepper("maksSenking", "Maks nattsenking", 0.5, 1, " °C")}
+      </div>
+
+      <div class="piller">
+        ${this._bryter("smartSenking", "Smart nattsenking", "mdi:weather-night")}
+        ${this._bryter("pooltak", "Pooltak på", "mdi:pool")}
+        ${this._bryter("styrSettpunkt", "Styr settpunkt", "mdi:thermometer-auto")}
+      </div>
+
+      <div class="blokk">
+        <div class="blokk-tittel">Klortabletter</div>
+        <div class="rad" @click=${() => this._mer("sisteKlor")}>
+          <span>Sist lagt i</span>
+          <span class="tall"
+            >${siste ? `${dato(siste)} (${nf(dagerSiden, 1)} d)` : "Aldri"}</span
+          >
+        </div>
+        <div class="rad">
+          <span>Neste</span>
+          <span class="tall">${neste ? dato(neste) : "Nå"}</span>
+        </div>
+        <div class="rad">
+          <span>Siste 7 dager</span>
+          <span class="tall">${this.attr("sisteKlor", "siste_7_dager") ?? 0} stk</span>
+        </div>
+      </div>
+      <button
+        class="stor ${this.on("klorForfall") ? "start" : ""}"
+        @click=${() => this._trykk("loggKlor")}
+      >
+        <ha-icon icon="mdi:pill"></ha-icon> Logg klortablett
+      </button>
+    `;
+  }
+
   _spreder() {
     const går = this.on("spreder");
     const igjen = this.val("spredertid", 0) || 0;
@@ -617,6 +731,7 @@ class KiBassengCard extends LitElement {
     const innhold = {
       oversikt: () => this._oversikt(),
       sirkulasjon: () => this._sirkulasjon(),
+      varme: () => this._varme(),
       spreder: () => this._spreder(),
       innstillinger: () => this._innstillinger(),
     };
@@ -1115,6 +1230,7 @@ class KiBassengCardEditor extends LitElement {
             options: [
               { value: "oversikt", label: "Oversikt" },
               { value: "sirkulasjon", label: "Sirkulasjon" },
+              { value: "varme", label: "Varme" },
               { value: "spreder", label: "Spreder" },
               { value: "innstillinger", label: "Innstillinger" },
             ],
@@ -1125,7 +1241,10 @@ class KiBassengCardEditor extends LitElement {
     return html`
       <ha-form
         .hass=${this.hass}
-        .data=${{ faner: ["oversikt", "sirkulasjon", "spreder", "innstillinger"], ...this._config }}
+        .data=${{
+          faner: ["oversikt", "sirkulasjon", "varme", "spreder", "innstillinger"],
+          ...this._config,
+        }}
         .schema=${schema}
         .computeLabel=${(s) =>
           ({ tittel: "Tittel", prefix: "Entitetsprefiks", faner: "Faner" }[s.name] || s.name)}

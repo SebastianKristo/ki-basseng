@@ -20,7 +20,10 @@
           "inflow_sensor": "Inflow temperature",
           "outflow_sensor": "Outflow temperature",
           "outdoor_sensor": "Outdoor temperature",
-          "valve_switch": "Sprinkler water valve"
+          "valve_switch": "Sprinkler water valve",
+          "weather_entity": "Weather forecast (temperature and cloud cover)",
+          "cover_entity": "Pool cover",
+          "presence_entities": "Presence (people, zones)"
         }
       },
       "basseng": {
@@ -31,7 +34,9 @@
           "flow_m3h": "Pump capacity",
           "pump_baseline_w": "Pump baseline load",
           "hp_nominal_w": "Heat pump rated power",
-          "currency": "Currency"
+          "currency": "Currency",
+          "surface_m2": "Water surface area",
+          "collector_m2": "Solar collector area (0 = none)"
         }
       }
     },
@@ -66,7 +71,10 @@
           "inflow_sensor": "Inflow temperature",
           "outflow_sensor": "Outflow temperature",
           "outdoor_sensor": "Outdoor temperature",
-          "valve_switch": "Sprinkler water valve"
+          "valve_switch": "Sprinkler water valve",
+          "weather_entity": "Weather forecast (temperature and cloud cover)",
+          "cover_entity": "Pool cover",
+          "presence_entities": "Presence (people, zones)"
         }
       },
       "basseng": {
@@ -76,7 +84,9 @@
           "flow_m3h": "Pump capacity",
           "pump_baseline_w": "Pump baseline load",
           "hp_nominal_w": "Heat pump rated power",
-          "currency": "Currency"
+          "currency": "Currency",
+          "surface_m2": "Water surface area",
+          "collector_m2": "Solar collector area (0 = none)"
         }
       }
     }
@@ -91,7 +101,16 @@
           "filtrering": "Filtering",
           "oppvarming": "Heating",
           "boost": "Boost",
-          "spreder": "Sprinkler"
+          "spreder": "Sprinkler",
+          "solvarme": "Solar heat"
+        }
+      },
+      "nattsenking": {
+        "state": {
+          "av": "Off",
+          "aktiv": "Active",
+          "planlagt": "Planned",
+          "lonner_seg_ikke": "Not worth it"
         }
       }
     },
@@ -103,6 +122,13 @@
           "badeklar": "Swim-ready",
           "ferie": "Away",
           "egendefinert": "Custom"
+        }
+      },
+      "nattsenking_kriterium": {
+        "state": {
+          "begge": "Money, never more energy",
+          "kostnad": "Money",
+          "energi": "Energy (kWh)"
         }
       }
     },

@@ -17,10 +17,11 @@ def _koord(tilstand, innstillinger=None, hp_resume=False):
         states=SimpleNamespace(get=lambda e: (
             SimpleNamespace(state=tilstand, attributes={"temperature": 27})
             if e == "climate.basseng" and tilstand is not None else None)),
-        services=SimpleNamespace(async_call=_call))
+        services=SimpleNamespace(async_call=_call, has_service=lambda d, s: True))
     k.cfg = lambda n: "climate.basseng" if n == CONF_CLIMATE else None
     k.settings = {**DEFAULT_SETTINGS, **(innstillinger or {})}
     k._hp_resume = hp_resume
+    k._auto_rettet = 0
     k.kall = kall
     return k
 

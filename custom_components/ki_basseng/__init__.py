@@ -10,15 +10,19 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
+    ATTR_COUNT,
     ATTR_MINUTES,
+    ATTR_NOTE,
     ATTR_PROFILE,
     DOMAIN,
     PLATFORMS,
     PROFILE_OPTIONS,
     SERVICE_BOOST,
+    SERVICE_LOG_CHLORINE,
     SERVICE_SET_PROFILE,
     SERVICE_START_SPREDER,
     SERVICE_STOP_SPREDER,
+    SERVICE_UNDO_CHLORINE,
 )
 from .coordinator import KiBassengCoordinator
 
@@ -48,6 +52,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_STOP_SPREDER,
                 SERVICE_BOOST,
                 SERVICE_SET_PROFILE,
+                SERVICE_LOG_CHLORINE,
+                SERVICE_UNDO_CHLORINE,
             ):
                 hass.services.async_remove(DOMAIN, service)
     return unloaded
@@ -85,6 +91,36 @@ def _register_services(hass: HomeAssistant) -> None:
         for coordinator in _coordinators(hass, call):
             await coordinator.async_set_profile(call.data[ATTR_PROFILE])
 
+    async def logg_klortablett(call: ServiceCall) -> None:
+        for coordinator in _coordinators(hass, call):
+            await coordinator.async_log_chlorine(
+                call.data.get(ATTR_COUNT, 1), call.data.get(ATTR_NOTE, "")
+            )
+
+    async def angre_klortablett(call: ServiceCall) -> None:
+        for coordinator in _coordinators(hass, call):
+            await coordinator.async_undo_chlorine()
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_LOG_CHLORINE,
+        logg_klortablett,
+        schema=vol.Schema(
+            {
+                vol.Optional("entry_id"): cv.string,
+                vol.Optional(ATTR_COUNT, default=1): vol.All(
+                    vol.Coerce(int), vol.Range(min=1, max=20)
+                ),
+                vol.Optional(ATTR_NOTE, default=""): cv.string,
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_UNDO_CHLORINE,
+        angre_klortablett,
+        schema=vol.Schema({vol.Optional("entry_id"): cv.string}),
+    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_START_SPREDER,
