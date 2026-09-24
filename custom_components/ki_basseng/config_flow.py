@@ -97,7 +97,15 @@ UTSTYR_SCHEMA = vol.Schema(
             ["cover", "binary_sensor", "switch", "input_boolean"]
         ),
         vol.Optional(CONF_PRESENCE): _entity(
-            ["person", "device_tracker", "group", "zone", "binary_sensor", "input_boolean"],
+            [
+                "person",
+                "device_tracker",
+                "group",
+                "zone",
+                "binary_sensor",
+                "input_boolean",
+                "switch",
+            ],
             multiple=True,
         ),
     }

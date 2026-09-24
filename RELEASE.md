@@ -1,3 +1,14 @@
+# KI Basseng 1.3.1
+
+* **Tilstedeværelse kan være en bryter.** Feltet godtar nå `switch` i tillegg til personer,
+  sporere, soner, grupper, binærsensorer og `input_boolean`. «På» betyr hjemme.
+* **Pooltak uten egen entitet.** Feltet for pooltak-entitet er valgfritt og sier det nå.
+  Uten det styres taket med bryteren *Pooltak på*, som kortet viser som en egen flis.
+  Binærsensoren *Pooltak* er fjernet; den speilet bare bryteren.
+* Begrunnelsen for nattsenkingen skriver desimalkomma: «sparer 1,4 kWh».
+
+---
+
 # KI Basseng 1.3.0
 
 ## Smart nattsenking: av bare når det lønner seg
