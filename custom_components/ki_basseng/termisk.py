@@ -241,6 +241,80 @@ def simulate(
 
 
 @dataclass
+class HeatUp:
+    """Hvor lenge det tar og hva det koster å varme vannet opp til målet."""
+
+    minutes: float | None  # None: rekker ikke målet innen horisonten
+    kwh: float
+    cost: float | None  # None når en av timene mangler pris
+    reached_at: datetime | None
+
+
+HEAT_UP_STEPS = 6  # tidelsteg per time; tapet endrer seg når vannet blir varmere
+
+
+def heat_up(
+    pool: Pool,
+    hours: list[Hour],
+    start_temp: float,
+    target: float,
+    covered: bool,
+    now: datetime | None = None,
+) -> HeatUp:
+    """Varmepumpen på for fullt fra nå til vannet når `target`.
+
+    `hours[0]` er inneværende time, og bare det som er igjen av den regnes (fra
+    `now`). Sirkulasjonspumpen må gå så lenge varmepumpen jobber; i
+    filtreringstimer går den uansett og koster ikke ekstra. Svaret er det kortet
+    viser som «vannet når 27° om ca 2 t 10 min, og det koster ca 4 kroner».
+    """
+    start = now or (hours[0].start if hours else None)
+    if start_temp >= target - 0.1 or not hours:
+        return HeatUp(0.0, 0.0, 0.0, start)
+    cap = pool.capacity_kwh_k
+    temp = start_temp
+    minutes = kwh = cost = 0.0
+    priced = True
+    for i, h in enumerate(hours):
+        span = 1.0
+        if i == 0 and now is not None:
+            span = max(0.0, min(1.0, (h.start + timedelta(hours=1) - now).total_seconds() / 3600))
+        if span <= 0:
+            continue
+        cop = pool.cop(h.air, temp)
+        elec_w = pool.hp_nominal_w + (0.0 if h.filter_hour else pool.pump_w)
+        step = span / HEAT_UP_STEPS
+        for _ in range(HEAT_UP_STEPS):
+            net_w = (
+                pool.hp_nominal_w * cop
+                + pool.solar_w(h.ghi, covered, True)
+                + pool.pump_w * PUMP_HEAT_FRACTION
+                - pool.loss_w(temp, h.air, covered)
+            )
+            need_kwh = (target - temp) * cap
+            took = step
+            if net_w > 0 and need_kwh * 1000 / net_w <= step:
+                took = need_kwh * 1000 / net_w
+            temp += net_w * took / 1000 / cap
+            minutes += took * 60
+            used = elec_w * took / 1000
+            kwh += used
+            if h.price is None:
+                priced = False
+            else:
+                cost += used * h.price
+            if took < step or temp >= target - 1e-6:
+                reached = (now or hours[0].start) + timedelta(minutes=minutes)
+                return HeatUp(
+                    round(minutes, 1),
+                    round(kwh, 2),
+                    round(cost, 2) if priced else None,
+                    reached,
+                )
+    return HeatUp(None, round(kwh, 2), round(cost, 2) if priced else None, None)
+
+
+@dataclass
 class SetbackDecision:
     """Svaret på «bør varmepumpen stå av i natt?»."""
 

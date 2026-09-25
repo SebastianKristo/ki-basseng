@@ -119,6 +119,12 @@ laveste temperatur og de beste alternativene den vurderte.
 
 Faktorene vises på sensoren *Varmetap*.
 
+**Tid og kostnad til målet.** Sensoren *Måltemperatur* viser hvor lenge det tar å nå
+målet med varmepumpa på fra nå, og hva det koster: `minutter_til_mal`, `klar_kl`,
+`oppvarming_kwh` og `oppvarming_kostnad` (`rekker_malet` er `false` hvis den ikke når
+målet på to døgn). Modellen regner med været, sola, taket og strømprisen time for time.
+Kortet viser det som «Vannet når 27° om ca 2 t 10 min, og det koster ca 4 kroner».
+
 **Vanntemperatur.** Når pumpen står, måler følerne vannet som står i røret. Da
 fører modellen temperaturen videre fra siste pålitelige måling. Det estimatet
 brukes i beregningene og vises som `modellestimat`.
@@ -275,20 +281,19 @@ Legg `ki-basseng-card.js` i `/config/www/` og registrer den under
 
 ```yaml
 type: custom:ki-basseng-card
-tittel: Badebasseng
-faner: [oversikt, sirkulasjon, varme, spreder, innstillinger]
+varmepumpe: climate.basseng_bassengvarmepumpe
 ```
 
 `prefix:` kan utelates — kortet finner entitetene selv. Har du flere
 bassenger, oppgi prefiks for hvert kort.
 
-Fanen *Oversikt* viser omsetningsringen, vanntemperatur, modus med
-begrunnelse, døgnplanen som en 24-timers stripe med nå-markør, og fire
-nøkkeltall. *Sirkulasjon* har blokkene, profilvalg, steppere for mål og
-puls, og boost. *Varme* har måltemperatur, nattsenkingen med vindu og
-besparelse, steppere for ønsket temperatur og senking, bryter for pooltaket og
-klorloggen med én knapp. *Spreder* har nedtelling og hurtigvalg. *Innstillinger* har
-resten.
+Kortet (ki-basseng-card 3.0, i ki-cards) har bassengscenen og hurtigknappene øverst,
+og fanene *Oversikt*, *Varme*, *Klor* og *Spreder*, med *Innstillinger* bak tannhjulet.
+*Oversikt* har vann og «spart i dag» som fliser du blar i, en setning om hva som skjer
+(«Vannet når 27° om ca 2 t 10 min …»), dagens tall, profilene og bryterne. *Varme* har
+varmepumpa, forvalg for ønsket temperatur, grafen, nattsenkingen, pooltaket og
+vintermodus. *Klor* har navnene – trykk på den som la i – antall, kalenderen og
+innstillingene for klorloggen.
 
 Se `examples/badebasseng-popup.yaml` for en bubble-card-popup i samme stil
 som resten av dashbordet ditt.

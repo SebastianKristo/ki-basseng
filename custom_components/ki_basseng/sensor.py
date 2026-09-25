@@ -57,6 +57,20 @@ def _savings_attrs(d: dict) -> dict:
     }
 
 
+def _heat_up_attrs(h: dict) -> dict:
+    """Tid og kostnad til målet med varmepumpa på fra nå (KI Basseng 1.7)."""
+    if not h:
+        return {}
+    at = h.get("reached_at")
+    return {
+        "minutter_til_mal": h.get("minutes"),
+        "klar_kl": at.strftime("%H:%M") if at is not None and h.get("minutes") else None,
+        "oppvarming_kwh": h.get("kwh"),
+        "oppvarming_kostnad": h.get("cost"),
+        "rekker_malet": h.get("minutes") is not None,
+    }
+
+
 SETBACK_STATES = ["av", "aktiv", "planlagt", "lonner_seg_ikke"]
 
 
@@ -266,6 +280,7 @@ SENSORS: tuple[KiSensorDescription, ...] = (
             "onsket": d.get("wanted_temp"),
             "noen_hjemme": d.get("present"),
             "estimert_vanntemperatur": d.get("temp_estimate"),
+            **_heat_up_attrs(d.get("heat_up") or {}),
         },
     ),
     KiSensorDescription(
@@ -338,6 +353,7 @@ SENSORS: tuple[KiSensorDescription, ...] = (
             "logg": (d.get("chlorine") or {}).get("log"),
             "navn": (d.get("chlorine") or {}).get("names"),
             "per_person": (d.get("chlorine") or {}).get("per_person"),
+            "speiles_til": (d.get("chlorine") or {}).get("mirror"),
         },
     ),
     KiSensorDescription(

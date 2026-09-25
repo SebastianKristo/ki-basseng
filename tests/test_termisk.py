@@ -191,3 +191,54 @@ def test_ingen_senking_nar_varmepumpa_ikke_rekker_malet():
                            t.CRITERION_ENERGY)
     assert not d.worth_it
     assert "rekker ikke" in d.reason
+
+
+# -- tid og kostnad til målet (1.7) --------------------------------------------
+def test_pa_malet_tar_ingen_tid():
+    h = t.heat_up(_basseng(), _timer([14] * 4), 27, 27, False, KVELD)
+    assert h.minutes == 0
+    assert h.kwh == 0
+
+
+def test_tid_til_malet_med_og_uten_tak():
+    """En grad opp tar timer, og går fortere med taket på."""
+    luft = [16] * 48
+    apen = t.heat_up(_basseng(), _timer(luft), 26, 27, False, KVELD)
+    tak = t.heat_up(_basseng(), _timer(luft), 26, 27, True, KVELD)
+    assert apen.minutes is not None and tak.minutes is not None
+    assert tak.minutes < apen.minutes
+    assert 60 < tak.minutes < 24 * 60
+    # Strømmen: varmepumpa og sirkulasjonspumpa hele veien, pris 1 kr/kWh
+    assert tak.kwh == pytest.approx(tak.minutes / 60 * (1470 + 800) / 1000, rel=0.02)
+    assert tak.cost == pytest.approx(tak.kwh, rel=0.01)
+    assert abs((tak.reached_at - KVELD).total_seconds() / 60 - tak.minutes) < 1
+
+
+def test_filtreringstimer_koster_ikke_pumpa_ekstra():
+    luft = [16] * 48
+    uten = t.heat_up(_basseng(), _timer(luft), 26.5, 27, True, KVELD)
+    med = t.heat_up(_basseng(), _timer(luft, filter_timer=range(48)), 26.5, 27, True, KVELD)
+    assert med.kwh < uten.kwh
+
+
+def test_rekker_ikke_malet():
+    h = t.heat_up(_basseng(hp_nominal_w=300), _timer([2] * 12), 20, 27, False, KVELD)
+    assert h.minutes is None
+    assert h.reached_at is None
+
+
+def test_bare_resten_av_timen_regnes():
+    """Starter vi midt i timen, er det bare en halvtime igjen av den."""
+    b = _basseng()
+    luft = [16] * 48
+    hel = t.heat_up(b, _timer(luft), 26.9, 27, True, KVELD)
+    halv = t.heat_up(b, _timer(luft), 26.9, 27, True, KVELD + timedelta(minutes=30))
+    assert hel.minutes == pytest.approx(halv.minutes, rel=0.05)
+    assert halv.reached_at > hel.reached_at
+
+
+def test_uten_pris_ingen_kostnad():
+    timer = [t.Hour(KVELD + timedelta(hours=i), 16, 0, None, False) for i in range(48)]
+    h = t.heat_up(_basseng(), timer, 26.5, 27, True, KVELD)
+    assert h.minutes is not None
+    assert h.cost is None

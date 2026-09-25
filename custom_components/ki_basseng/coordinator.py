@@ -81,6 +81,9 @@ UNKNOWN = ("unknown", "unavailable", "none", "None", "")
 PRESENT_STATES = ("home", "on", "true", "hjemme")
 # Nattsenkingen regnes ut på nytt hvert tiende minutt
 SETBACK_RECALC_MIN = 10
+# Tid og kostnad til målet: regnes hvert femte minutt, to døgn frem
+HEAT_UP_RECALC_MIN = 5
+HEAT_UP_HORIZON_H = 48
 # Ikke start en ny senking rett etter at en ble avbrutt
 SETBACK_HOLD_S = 1800
 # Tapslæringen trenger et rolig vindu av en viss lengde
@@ -149,6 +152,8 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         self._env: dict = {}
         self._setback: termisk.SetbackDecision | None = None
         self._setback_key: tuple | None = None
+        self._heat_up: termisk.HeatUp | None = None
+        self._heat_up_key: tuple | None = None
         self._setback_on: bool = False
         self._setback_ended: datetime | None = None
         self._setpoint_sent: tuple[float, datetime] | None = None
@@ -331,6 +336,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         await self._refresh_forecast(now)
         self._update_environment(now, power)
         self._plan_setback(now)
+        self._plan_heat_up(now)
         mode, desired, reason = self._decide(now)
         await self._apply(mode, desired, now)
         await self._handle_sprinkler(now)
@@ -1192,6 +1198,42 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             self.settings.get("setback_criterion") or termisk.CRITERION_BOTH,
         )
 
+    def _plan_heat_up(self, now: datetime) -> None:
+        """Hvor lenge og hva det koster å nå målet med varmepumpa på fra nå.
+
+        Regnes hvert femte minutt og når målet eller taket endres. Vintermodus
+        har ikke noe mål å nå.
+        """
+        if self.winter or self._temp_est is None:
+            self._heat_up = None
+            self._heat_up_key = None
+            return
+        target = round(self.target_temp(), 2)
+        covered = self.covered()
+        key = (now.date(), now.hour, now.minute // HEAT_UP_RECALC_MIN, target, covered)
+        if key == self._heat_up_key:
+            return
+        self._heat_up_key = key
+        self._heat_up = termisk.heat_up(
+            self._pool(covered),
+            self._hours_ahead(now, HEAT_UP_HORIZON_H),
+            self._temp_est,
+            target,
+            covered,
+            now,
+        )
+
+    def _heat_up_snapshot(self) -> dict:
+        h = self._heat_up
+        if h is None:
+            return {}
+        return {
+            "minutes": h.minutes,
+            "kwh": h.kwh,
+            "cost": h.cost,
+            "reached_at": h.reached_at,
+        }
+
     async def _guard_setback(self, now: datetime) -> None:
         """Slå varmepumpen av og på etter nattsenkingens vindu."""
         climate = self.cfg(CONF_CLIMATE)
@@ -1429,7 +1471,15 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             "names": self.chlorine_names,
             "per_person": per_person,
             "days_since": round((now - last).total_seconds() / 86400, 1) if last else None,
+            "mirror": self._mirror_target(),
         }
+
+    def _mirror_target(self) -> str | None:
+        """Kalenderen tablettene også skrives til (valgt under Utstyr), om noen."""
+        calendar = self.cfg(CONF_CALENDAR)
+        if not calendar or self._is_own_calendar(calendar):
+            return None
+        return calendar
 
     # -- varmepumpa hopper i auto -------------------------------------
     async def _guard_auto_mode(self, now: datetime) -> None:
@@ -1626,6 +1676,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             self._plan_signature = None
         # Alt som påvirker varmemodellen gir ny vurdering av nattsenkingen
         self._setback_key = None
+        self._heat_up_key = None
         self._save_pending = True
         await self.async_request_refresh()
 
@@ -1760,6 +1811,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             "cop_model": env.get("cop_model"),
             "temp_estimate": round(self._temp_est, 2) if self._temp_est is not None else None,
             "target_temp": env.get("target"),
+            "heat_up": self._heat_up_snapshot(),
             "wanted_temp": _f(self.settings.get("target_temp"), 27),
             "present": env.get("present"),
             "covered": env.get("covered"),

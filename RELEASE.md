@@ -1,3 +1,32 @@
+# KI Basseng 1.7.0
+
+## Tid og kostnad til målet
+
+Sensoren *Måltemperatur* forteller nå hvor lenge det tar å varme vannet opp til målet, og
+hva det koster, med varmepumpa på fra nå:
+
+| Attributt | Hva |
+|---|---|
+| `minutter_til_mal` | Minutter til vannet er på målet (0 når det er der) |
+| `klar_kl` | Klokkeslettet det er klart |
+| `oppvarming_kwh`, `oppvarming_kostnad` | Strømmen varmepumpa og sirkulasjonspumpa bruker på veien, og hva den koster |
+| `rekker_malet` | `false` når varmepumpa ikke når målet innen to døgn |
+
+Varmemodellen regner time for time med været, sola, pooltaket og strømprisen, i tidelsteg
+så varmetapet følger vannet opp. I filtreringstimer koster ikke sirkulasjonspumpa ekstra.
+Anslaget regnes hvert femte minutt, og med en gang ønsket temperatur eller taket endres.
+Kostnaden står tom hvis en av timene mangler pris. I vintermodus er det ikke noe mål å nå.
+
+## Klorloggen
+
+*Siste klortablett* har fått `speiles_til`: kalenderen tablettene også skrives til (for
+eksempel Google Kalender, valgt under Utstyr), så kortet kan vise det.
+
+Det nye kortet (ki-basseng-card 3.0 i ki-cards 5.75) viser det som «Vannet når 27° om ca
+2 t 10 min, og det koster ca 4 kroner».
+
+---
+
 # KI Basseng 1.6.0
 
 ## Hva «spart i dag» består av
