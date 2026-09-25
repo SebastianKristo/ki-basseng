@@ -138,6 +138,17 @@ og vanntemperatur, og skriver i loggboka.
 blir kortere i varmt vann, fordi klor forbrukes raskere over 24 °C. Ved 32 °C er
 det halvert. *Klortablett bør legges i* slår seg på når det er på tide.
 
+### Spart i dag
+
+*Spart i dag* er hva pumpa ville kostet i døgndrift, minus hva den faktisk kostet. I
+attributtene står hva tallet består av:
+
+- **Færre pumpetimer** og **billigere timer**. Disse to går opp i det målte tallet.
+- **Nattsenkingen** og **pooltaket**, som er anslag fra varmemodellen.
+- **I går**, **denne måneden** og **totalt**.
+
+I kortet folder «Spart i dag» ut hele oppdelingen.
+
 ### Vintermodus
 
 Slå på *Vintermodus* når sesongen er over.

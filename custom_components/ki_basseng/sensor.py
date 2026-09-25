@@ -30,6 +30,33 @@ from .coordinator import KiBassengCoordinator
 from .entity import KiBassengEntity
 
 
+def _savings_attrs(d: dict) -> dict:
+    """Oppdelingen av «spart i dag». Tallene i kroner er i integrasjonens valuta."""
+    s = d.get("savings") or {}
+    return {
+        "sammenlignet_med": "pumpe i kontinuerlig drift",
+        "sirkulasjon_kwh": s.get("kwh_saved"),
+        "sirkulasjon_kr": s.get("amount_cost"),
+        "billigere_timer_kr": s.get("timing_cost"),
+        "snittpris_dogn_sa_langt": s.get("avg_price"),
+        "snittpris_pumpe": s.get("pump_avg_price"),
+        "pumpetimer": s.get("runtime_h"),
+        "timer_med_pris": s.get("hours_ref"),
+        "nattsenking_kwh_anslatt": s.get("setback_kwh"),
+        "nattsenking_kr_anslatt": s.get("setback_cost"),
+        "med_nattsenking_kr": s.get("with_setback"),
+        "pooltak_kwh_anslatt": s.get("cover_kwh"),
+        "pooltak_kr_anslatt": s.get("cover_cost"),
+        "uten_ki_kr": s.get("without_ki"),
+        "med_ki_kr": s.get("with_ki"),
+        "i_gar": s.get("yesterday"),
+        "denne_maneden": s.get("month"),
+        "totalt": s.get("total"),
+        "snittpris_plan": d.get("price_plan_avg"),
+        "snittpris_dogn": d.get("price_day_avg"),
+    }
+
+
 SETBACK_STATES = ["av", "aktiv", "planlagt", "lonner_seg_ikke"]
 
 
@@ -210,11 +237,7 @@ SENSORS: tuple[KiSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
         value=lambda d, c: d.get("saved_today"),
-        attrs=lambda d, c: {
-            "sammenlignet_med": "pumpe i kontinuerlig drift",
-            "snittpris_plan": d.get("price_plan_avg"),
-            "snittpris_dogn": d.get("price_day_avg"),
-        },
+        attrs=lambda d, c: _savings_attrs(d),
     ),
     KiSensorDescription(
         key="vanntemperatur",

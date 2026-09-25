@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "ki_basseng"
 NAME = "KI Basseng"
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 STORAGE_VERSION = 1
 
 PLATFORMS: list[Platform] = [
@@ -182,7 +182,41 @@ DEFAULT_COUNTERS: dict = {
     "sprinkler_today": 0.0,  # minutter
     "sprinkler_last": 0.0,  # timestamp
     "chlorine_total": 0,  # nullstilles ikke ved døgnskifte
+    # Oppdelingen av «spart i dag». Bare timer med kjent pris telles, så de går opp.
+    "ref_kwh_today": 0.0,  # kWh pumpa ville brukt i døgndrift
+    "pump_kwh_priced": 0.0,  # kWh pumpa faktisk brukte, i de samme timene
+    "pump_cost_today": 0.0,
+    "hp_cost_today": 0.0,
+    "setback_kwh_today": 0.0,  # anslått: nattsenkingen som startet i dag
+    "setback_cost_today": 0.0,
+    "cover_kwh_today": 0.0,  # anslått: varmetap taket hindret, i strøm
+    "cover_cost_today": 0.0,
+    "split_day": "",  # dagen tellerne over har vært med hele døgnet
+    # Målt besparelse bakover i tid; dagen i dag legges til ved døgnskiftet
+    "saved_yesterday": 0.0,
+    "saved_month": 0.0,
+    "saved_month_key": "",
+    "saved_total": 0.0,
 }
+
+# Tellerne som starter på null hvert døgn
+DAILY_COUNTERS = (
+    "volume_today",
+    "runtime_today",
+    "pump_kwh_today",
+    "hp_kwh_today",
+    "cost_today",
+    "cost_reference",
+    "sprinkler_today",
+    "ref_kwh_today",
+    "pump_kwh_priced",
+    "pump_cost_today",
+    "hp_cost_today",
+    "setback_kwh_today",
+    "setback_cost_today",
+    "cover_kwh_today",
+    "cover_cost_today",
+)
 
 # Reserveplan når prisdata mangler: spredt over døgnet, tyngde på dagtid
 FALLBACK_HOURS = [7, 13, 8, 20, 14, 9, 21, 15, 6, 12, 19, 22, 10, 16]
