@@ -453,3 +453,37 @@ async def test_nattsenking_og_pooltak_anslas(hass, oppsett):
     assert k.counters["cover_kwh_today"] > 0.5, "taket hindrer varmetap om natta"
     k._count_cover(False, 27.0, 14.0, 0.0, {"dt_s": 3600, "price": 1.0, "pump_w": 0, "hp_w": 0})
     assert k.counters["cover_cost_today"] == k.counters["cover_kwh_today"], "ingenting når taket er av"
+
+
+async def test_tid_og_kostnad_til_malet(hass, oppsett):
+    """Måltemperaturen forteller hvor lenge og hva det koster å nå målet."""
+    k, _ = oppsett
+    await hass.services.async_call(
+        "number", "set_value",
+        {"entity_id": _id(hass, "number", "onsket_temperatur"), "value": 28},
+        blocking=True,
+    )
+    await k.async_refresh()
+    a = hass.states.get(_id(hass, "sensor", "maltemperatur")).attributes
+    assert a["rekker_malet"] is True
+    assert a["minutter_til_mal"] > 0
+    assert a["oppvarming_kwh"] > 0
+    assert a["klar_kl"] is not None and ":" in a["klar_kl"]
+
+    # I vintermodus er det ikke noe mål å nå
+    k.settings["winter_mode"] = True
+    await k.async_refresh()
+    a = hass.states.get(_id(hass, "sensor", "maltemperatur")).attributes
+    assert "minutter_til_mal" not in a
+
+
+async def test_klorloggen_viser_hvor_den_speiles(hass, oppsett):
+    k, _ = oppsett
+    assert k._chlorine_info(dt_util.now())["mirror"] is None
+    k.entry.update_listeners.clear()
+    hass.config_entries.async_update_entry(k.entry, options={"calendar_entity": "calendar.google"})
+    assert k._chlorine_info(dt_util.now())["mirror"] == "calendar.google"
+    # Sin egen kalender speiles den ikke til
+    egen = _id(hass, "calendar", "klorlogg")
+    hass.config_entries.async_update_entry(k.entry, options={"calendar_entity": egen})
+    assert k._chlorine_info(dt_util.now())["mirror"] is None
