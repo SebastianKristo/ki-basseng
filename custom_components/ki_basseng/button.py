@@ -20,6 +20,7 @@ from .entity import KiBassengEntity
 @dataclass(frozen=True, kw_only=True)
 class KiButtonDescription(ButtonEntityDescription):
     action: Callable[[KiBassengCoordinator], Coroutine[Any, Any, None]]
+    level: bool = False
 
 
 BUTTONS: tuple[KiButtonDescription, ...] = (
@@ -61,6 +62,20 @@ BUTTONS: tuple[KiButtonDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
         action=lambda c: c.async_reset_daily(),
     ),
+    KiButtonDescription(
+        key="fyll_bassenget",
+        name="Fyll bassenget",
+        icon="mdi:water-plus",
+        level=True,
+        action=lambda c: c.async_start_fill(),
+    ),
+    KiButtonDescription(
+        key="stopp_pafylling",
+        name="Stopp påfylling",
+        icon="mdi:water-off",
+        level=True,
+        action=lambda c: c.async_stop_fill("Stoppet"),
+    ),
 )
 
 
@@ -68,7 +83,9 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: KiBassengCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(KiBassengButton(coordinator, d) for d in BUTTONS)
+    async_add_entities(
+        KiBassengButton(coordinator, d) for d in BUTTONS if not d.level or coordinator.has_level
+    )
 
 
 class KiBassengButton(KiBassengEntity, ButtonEntity):

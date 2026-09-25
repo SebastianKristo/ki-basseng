@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "ki_basseng"
 NAME = "KI Basseng"
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 STORAGE_VERSION = 1
 
 PLATFORMS: list[Platform] = [
@@ -41,6 +41,10 @@ CONF_COVER_INVERT = "cover_invert"
 CONF_HOUSE_SENSOR = "house_sensor"
 CONF_HEATERS = "heater_entities"
 CONF_CALENDAR = "calendar_entity"
+# Vannivå (1.8): en vannsensor festet i bassenget, våt = nok vann
+CONF_LEVEL_SENSOR = "level_sensor"
+CONF_FILL_VALVE = "fill_valve"
+CONF_NOTIFY = "notify_services"
 
 CONF_VOLUME = "volume_m3"
 CONF_FLOW = "flow_m3h"
@@ -111,6 +115,11 @@ PROFILE_OPTIONS = [*PROFILES, PROFILE_CUSTOM]
 # Innstillinger som styres fra entiteter (lagres i .storage)
 # --------------------------------------------------------------------------
 DEFAULT_SETTINGS: dict = {
+    # Vannivå: minutter sensoren må være tørr før varsel, lengste påfylling
+    "level_dry_minutes": 45,
+    "fill_max_minutes": 60,
+    "auto_fill": False,
+    "level_notify": True,
     # brytere
     "auto": True,
     "price_control": True,

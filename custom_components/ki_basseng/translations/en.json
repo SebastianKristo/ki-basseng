@@ -27,7 +27,10 @@
           "cover_invert": "Cover sensor is «on» when the cover is OPEN (door/window sensor)",
           "house_sensor": "Pool house temperature (winter mode)",
           "heater_entities": "Pool house heaters (winter mode)",
-          "calendar_entity": "Calendar the chlorine log is also written to (e.g. Google)"
+          "calendar_entity": "Calendar the chlorine log is also written to (e.g. Google)",
+          "level_sensor": "Water sensor in the pool (wet = enough water)",
+          "fill_valve": "Fill valve (empty = the main valve above)",
+          "notify_services": "Notify with (e.g. notify.mobile_app_iphone, comma separated)"
         }
       },
       "basseng": {
@@ -82,7 +85,10 @@
           "cover_invert": "Cover sensor is «on» when the cover is OPEN (door/window sensor)",
           "house_sensor": "Pool house temperature (winter mode)",
           "heater_entities": "Pool house heaters (winter mode)",
-          "calendar_entity": "Calendar the chlorine log is also written to (e.g. Google)"
+          "calendar_entity": "Calendar the chlorine log is also written to (e.g. Google)",
+          "level_sensor": "Water sensor in the pool (wet = enough water)",
+          "fill_valve": "Fill valve (empty = the main valve above)",
+          "notify_services": "Notify with (e.g. notify.mobile_app_iphone, comma separated)"
         }
       },
       "basseng": {

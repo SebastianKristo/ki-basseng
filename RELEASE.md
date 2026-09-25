@@ -1,3 +1,28 @@
+# KI Basseng 1.8.0
+
+## Vannivå med varsel og automatisk påfylling
+
+En vannsensor festet i bassenget sier om det er nok vann: våt er fullt nok, tørr betyr at
+det må fylles. Velg den under Utstyr (*Vannsensor i bassenget*). Uten sensor lages ingen av
+de nye entitetene, og kortet viser ikke vannivået.
+
+- **Varsel:** har sensoren vært tørr i *Tørr før varsel* (45 min), slår *Bassenget trenger
+  vann* seg på og det varsles én gang: varsel i Home Assistant, tjenestene under *Varsle med*
+  (f.eks. `notify.mobile_app_iphone`, flere med komma) og hendelsen `ki_basseng_vanniva`.
+  Når sensoren er våt igjen, forsvinner varselet.
+- **Automatisk påfylling** (bryter, av som standard): ventilen åpnes – *Ventil for påfylling*,
+  eller hovedkranen sprederen bruker – og stenges så snart sensoren er våt.
+- **Sikring:** etter *Maks påfylling* (60 min) uten at sensoren ble våt stenges ventilen, det
+  varsles, og det fylles ikke automatisk igjen før sensoren har vært våt.
+- **For hånd:** knappene *Fyll bassenget* og *Stopp påfylling*.
+- Sprederen stenger ikke ventilen midt i en påfylling, og frostvakten gjelder også her.
+
+Nye entiteter: sensor *Vannivå*, binærsensor *Bassenget trenger vann*, brytere *Automatisk
+påfylling* og *Varsle om vannivå*, tall *Tørr før varsel* og *Maks påfylling*, knapper *Fyll
+bassenget* og *Stopp påfylling*.
+
+---
+
 # KI Basseng 1.7.0
 
 ## Tid og kostnad til målet

@@ -27,6 +27,9 @@ from .const import (
     CONF_CLIMATE,
     CONF_COLLECTOR_AREA,
     CONF_CALENDAR,
+    CONF_FILL_VALVE,
+    CONF_LEVEL_SENSOR,
+    CONF_NOTIFY,
     CONF_COVER,
     CONF_COVER_INVERT,
     CONF_HEATERS,
@@ -119,6 +122,10 @@ UTSTYR_SCHEMA = vol.Schema(
             ["switch", "input_boolean", "climate", "light"], multiple=True
         ),
         vol.Optional(CONF_CALENDAR): _entity("calendar"),
+        # Vannivå: vannsensor i bassenget (våt = nok vann), ventil og varsling
+        vol.Optional(CONF_LEVEL_SENSOR): _entity(["binary_sensor", "input_boolean"]),
+        vol.Optional(CONF_FILL_VALVE): _entity(["switch", "valve", "input_boolean"]),
+        vol.Optional(CONF_NOTIFY): TextSelector(),
     }
 )
 

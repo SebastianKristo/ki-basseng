@@ -27,7 +27,10 @@
           "cover_invert": "Pooltak-sensoren er «på» når taket er ÅPENT (dør/vindu-sensor)",
           "house_sensor": "Temperatur i bassenghuset (vintermodus)",
           "heater_entities": "Varmeelementer i bassenghuset (vintermodus)",
-          "calendar_entity": "Kalender klorloggen også skal skrives til (f.eks. Google)"
+          "calendar_entity": "Kalender klorloggen også skal skrives til (f.eks. Google)",
+          "level_sensor": "Vannsensor i bassenget (våt = nok vann)",
+          "fill_valve": "Ventil for påfylling (tom = hovedkranen over)",
+          "notify_services": "Varsle med (f.eks. notify.mobile_app_iphone, flere med komma)"
         }
       },
       "basseng": {
@@ -82,7 +85,10 @@
           "cover_invert": "Pooltak-sensoren er «på» når taket er ÅPENT (dør/vindu-sensor)",
           "house_sensor": "Temperatur i bassenghuset (vintermodus)",
           "heater_entities": "Varmeelementer i bassenghuset (vintermodus)",
-          "calendar_entity": "Kalender klorloggen også skal skrives til (f.eks. Google)"
+          "calendar_entity": "Kalender klorloggen også skal skrives til (f.eks. Google)",
+          "level_sensor": "Vannsensor i bassenget (våt = nok vann)",
+          "fill_valve": "Ventil for påfylling (tom = hovedkranen over)",
+          "notify_services": "Varsle med (f.eks. notify.mobile_app_iphone, flere med komma)"
         }
       },
       "basseng": {

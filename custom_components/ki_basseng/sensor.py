@@ -71,6 +71,28 @@ def _heat_up_attrs(h: dict) -> dict:
     }
 
 
+def _level_attrs(d: dict) -> dict:
+    lv = d.get("level") or {}
+    return {
+        "vannsensor": lv.get("sensor"),
+        "vat": lv.get("wet"),
+        "torr_siden": lv.get("dry_since"),
+        "torr_min": lv.get("dry_minutes"),
+        "varsel_etter_min": lv.get("delay"),
+        "fyller": lv.get("filling"),
+        "fylling_startet": lv.get("fill_started"),
+        "fylt_min": lv.get("fill_minutes"),
+        "maks_pafylling_min": lv.get("fill_max"),
+        "forrige_pafylling_min": lv.get("fill_last_minutes"),
+        "ventil": lv.get("valve"),
+        "automatisk": lv.get("auto_fill"),
+        "status": lv.get("reason"),
+    }
+
+
+LEVEL_STATES = ["ok", "torr", "lav", "fyller", "stoppet", "ukjent"]
+
+
 SETBACK_STATES = ["av", "aktiv", "planlagt", "lonner_seg_ikke"]
 
 
@@ -109,6 +131,7 @@ class KiSensorDescription(SensorEntityDescription):
 
     value: Callable[[dict, KiBassengCoordinator], Any]
     attrs: Callable[[dict, KiBassengCoordinator], dict] | None = None
+    level: bool = False  # bare når en vannsensor er satt opp
 
 
 SENSORS: tuple[KiSensorDescription, ...] = (
@@ -378,6 +401,16 @@ SENSORS: tuple[KiSensorDescription, ...] = (
             "brukt_i_dag_min": d.get("sprinkler_today"),
         },
     ),
+    KiSensorDescription(
+        key="vanniva",
+        name="Vannivå",
+        icon="mdi:waves-arrow-up",
+        device_class=SensorDeviceClass.ENUM,
+        options=LEVEL_STATES,
+        level=True,
+        value=lambda d, c: (d.get("level") or {}).get("state"),
+        attrs=lambda d, c: _level_attrs(d),
+    ),
 )
 
 
@@ -385,7 +418,9 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: KiBassengCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(KiBassengSensor(coordinator, d) for d in SENSORS)
+    async_add_entities(
+        KiBassengSensor(coordinator, d) for d in SENSORS if not d.level or coordinator.has_level
+    )
 
 
 class KiBassengSensor(KiBassengEntity, SensorEntity):

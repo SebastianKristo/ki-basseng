@@ -144,6 +144,27 @@ og vanntemperatur, og skriver i loggboka.
 blir kortere i varmt vann, fordi klor forbrukes raskere over 24 °C. Ved 32 °C er
 det halvert. *Klortablett bør legges i* slår seg på når det er på tide.
 
+### Vannivå
+
+Fest en vannsensor (en binærsensor som er «på» når den er våt) i bassenget i høyden
+vannet skal stå, og velg den under Utstyr som *Vannsensor i bassenget*. Uten den finnes
+ingen av entitetene under, og kortet viser ikke vannivået.
+
+- **Våt:** bassenget har nok vann.
+- **Tørr i *Tørr før varsel*** (45 min, kan settes 5–240): *Bassenget trenger vann* slår
+  seg på, og det varsles én gang – i Home Assistant, med tjenestene under *Varsle med*
+  (f.eks. `notify.mobile_app_iphone`) og som hendelsen `ki_basseng_vanniva`. Ventetiden
+  gjør at bølger og badegjester ikke gir falsk alarm.
+- **Automatisk påfylling** (av som standard) åpner ventilen – egen påfyllingsventil, eller
+  hovedkranen sprederen bruker – og stenger den når sensoren er våt igjen. *Maks påfylling*
+  (60 min) er sikringen: blir sensoren ikke våt, stenges ventilen, det varsles, og det
+  fylles ikke automatisk igjen før sensoren har vært våt. Frostvakten gjelder også her.
+- **Fyll bassenget** og **Stopp påfylling** styrer det for hånd. Sprederen stenger ikke
+  ventilen midt i en påfylling.
+
+Sensoren *Vannivå* viser `ok`, `torr` (tørr, venter), `lav`, `fyller`, `stoppet` eller
+`ukjent`, med hvor lenge den har vært tørr og hvor lenge det er fylt som attributter.
+
 ### Spart i dag
 
 *Spart i dag* er hva pumpa ville kostet i døgndrift, minus hva den faktisk kostet. I

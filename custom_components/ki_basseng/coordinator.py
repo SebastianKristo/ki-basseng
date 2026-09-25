@@ -37,6 +37,9 @@ from .const import (
     CONF_PUMP_POWER_SENSOR,
     CONF_PUMP_SWITCH,
     CONF_VALVE,
+    CONF_LEVEL_SENSOR,
+    CONF_FILL_VALVE,
+    CONF_NOTIFY,
     CONF_VOLUME,
     CONF_WEATHER,
     DEFAULT_AREA,
@@ -136,6 +139,12 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         self._sprinkler_started: datetime | None = None
         self._sprinkler_reason: str = "Klar"
 
+        # Vannivå (1.8)
+        self._fill_started: datetime | None = None
+        self._level_notified: bool = False
+        self._fill_blocked: bool = False
+        self._level_reason: str = ""
+
         self._hp_resume: bool = False
         self._hp_target: float | None = None
         self._auto_rettet: int = 0
@@ -182,6 +191,12 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         # startet Home Assistant på nytt mens integrasjonen hadde slått av
         # varmepumpa (natt eller manglende sirkulasjon), glemte den det, trodde
         # pumpa var slått av med vilje og ba aldri om varme igjen.
+        level = stored.get("level")
+        if isinstance(level, dict):
+            self._fill_started = dt_util.parse_datetime(str(level.get("fill_started") or "")) or None
+            self._level_notified = bool(level.get("notified"))
+            self._fill_blocked = bool(level.get("blocked"))
+
         hp = stored.get("hp")
         if isinstance(hp, dict):
             self._hp_resume = bool(hp.get("resume"))
@@ -227,6 +242,11 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
                 "day": self._day,
                 "learned": self.learned,
                 "chlorine": self.chlorine,
+                "level": {
+                    "fill_started": self._fill_started.isoformat() if self._fill_started else None,
+                    "notified": self._level_notified,
+                    "blocked": self._fill_blocked,
+                },
                 "hp": {
                     "resume": self._hp_resume,
                     "target": self._hp_target,
@@ -340,6 +360,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         mode, desired, reason = self._decide(now)
         await self._apply(mode, desired, now)
         await self._handle_sprinkler(now)
+        await self._handle_level(now)
         await self._guard_winter(now)
         await self._guard_setback(now)
         await self._guard_heatpump(now)
@@ -1623,7 +1644,8 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         self._sprinkler_until = None
         self._sprinkler_started = None
         self._sprinkler_reason = reason
-        if valve:
+        # Fyller bassenget gjennom samme ventil, står den åpen til påfyllingen er ferdig
+        if valve and not (self._fill_started is not None and self._fill_valve() == valve):
             await self.hass.services.async_call(
                 "switch", "turn_off", {"entity_id": valve}, blocking=False
             )
@@ -1645,6 +1667,200 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         if siden < interval * 3600:
             return
         await self.async_start_sprinkler()
+
+    # -- vannivå (1.8) -------------------------------------------------
+    @property
+    def has_level(self) -> bool:
+        return bool(self.cfg(CONF_LEVEL_SENSOR))
+
+    def _fill_valve(self) -> str | None:
+        """Ventilen bassenget fylles med: egen, ellers hovedkranen sprederen bruker."""
+        return self.cfg(CONF_FILL_VALVE) or self.cfg(CONF_VALVE)
+
+    def _level_wet(self) -> bool | None:
+        state = self.hass.states.get(self.cfg(CONF_LEVEL_SENSOR) or "")
+        if state is None or state.state in UNKNOWN:
+            return None
+        return state.state == "on"
+
+    def _dry_since(self) -> datetime | None:
+        state = self.hass.states.get(self.cfg(CONF_LEVEL_SENSOR) or "")
+        if state is None or state.state != "off":
+            return None
+        return dt_util.as_local(state.last_changed)
+
+    def level_state(self, now: datetime | None = None) -> str:
+        if not self.has_level:
+            return "ikke_satt_opp"
+        wet = self._level_wet()
+        if self._fill_started is not None:
+            return "fyller"
+        if wet is None:
+            return "ukjent"
+        if wet:
+            return "ok"
+        if self._fill_blocked:
+            return "stoppet"
+        since = self._dry_since()
+        now = now or dt_util.now()
+        if since is not None and (now - since).total_seconds() / 60 < _f(self.settings.get("level_dry_minutes"), 45):
+            return "torr"
+        return "lav"
+
+    async def _handle_level(self, now: datetime) -> None:
+        """Vannsensoren i bassenget: våt er nok vann, tørr en stund betyr påfyll.
+
+        Sensoren må ha vært tørr i «Tørr før varsel» (45 min) før det varsles, så
+        bølger og en stupende badegjest ikke gir falsk alarm. Med automatisk påfylling
+        åpnes ventilen, og den stenges igjen så snart sensoren er våt – eller etter
+        «Maks påfylling», som en sikring hvis sensoren ikke blir våt.
+        """
+        if not self.has_level:
+            return
+        wet = self._level_wet()
+        if wet is None:
+            return
+        if wet:
+            if self._fill_started is not None:
+                await self.async_stop_fill("Bassenget er fullt")
+            elif self._level_notified:
+                await self._notify_level("Bassenget har nok vann", "Vannsensoren er våt igjen.", "ok")
+            self._level_notified = False
+            if self._fill_blocked:
+                self._fill_blocked = False
+                self._save_pending = True
+            return
+
+        if self._fill_started is not None:
+            maks = _f(self.settings.get("fill_max_minutes"), 60)
+            if (now - self._fill_started).total_seconds() / 60 >= maks:
+                self._fill_blocked = True
+                await self.async_stop_fill(
+                    f"Stoppet etter {maks:.0f} min uten at sensoren ble våt",
+                    varsle=True,
+                )
+            return
+
+        if self.level_state(now) != "lav":
+            return
+        if not self._level_notified:
+            self._level_notified = True
+            self._save_pending = True
+            since = self._dry_since()
+            minutter = (now - since).total_seconds() / 60 if since else 0
+            await self._notify_level(
+                "Bassenget trenger mer vann",
+                f"Vannsensoren har vært tørr i {minutter:.0f} min."
+                + (" Fyller automatisk." if self.settings.get("auto_fill") and self._fill_valve() else ""),
+                "lav",
+            )
+        if self.settings.get("auto_fill"):
+            await self.async_start_fill(auto=True)
+
+    async def async_start_fill(self, auto: bool = False) -> None:
+        valve = self._fill_valve()
+        if not self.has_level or not valve:
+            self._level_reason = "Ingen vannsensor eller ventil er satt opp"
+            self.async_update_listeners()
+            return
+        if self._fill_started is not None:
+            return
+        if self._level_wet():
+            self._level_reason = "Sensoren er våt – bassenget er fullt"
+            self.async_update_listeners()
+            return
+        ute = self._num(CONF_OUTDOOR)
+        if self.settings.get("frost_guard") and ute is not None and ute < 2:
+            self._level_reason = f"Frostvakt: det er {ute:.0f} °C ute"
+            self.async_update_listeners()
+            return
+        self._fill_started = dt_util.now()
+        self._fill_blocked = False
+        self._level_reason = "Fyller automatisk" if auto else "Fyller"
+        self._save_pending = True
+        await self.hass.services.async_call(
+            "homeassistant", "turn_on", {"entity_id": valve}, blocking=False
+        )
+        await self._logbook("Fyller bassenget" + (" automatisk" if auto else ""), valve)
+        self.async_update_listeners()
+
+    async def async_stop_fill(self, reason: str = "Stoppet", varsle: bool = False) -> None:
+        valve = self._fill_valve()
+        minutter = 0.0
+        if self._fill_started is not None:
+            minutter = (dt_util.now() - self._fill_started).total_seconds() / 60
+            self.counters["fill_last_minutes"] = round(minutter, 1)
+            self.counters["fill_last"] = dt_util.now().timestamp()
+        self._fill_started = None
+        self._level_reason = reason
+        self._save_pending = True
+        # Går sprederen på samme ventil, får den stå åpen til sprederen er ferdig
+        if valve and not (self.sprinkler_running and self.cfg(CONF_VALVE) == valve):
+            await self.hass.services.async_call(
+                "homeassistant", "turn_off", {"entity_id": valve}, blocking=False
+            )
+        if minutter:
+            await self._logbook(f"Påfylling stoppet etter {minutter:.0f} min: {reason}", valve)
+        if varsle:
+            await self._notify_level("Påfyllingen stoppet", f"{reason}. Sjekk vannsensoren og ventilen.", "stoppet")
+        elif reason == "Bassenget er fullt" and self._level_notified:
+            await self._notify_level("Bassenget er fylt opp", f"Fylte i {minutter:.0f} min.", "ok")
+        self.async_update_listeners()
+
+    async def _notify_level(self, title: str, message: str, kind: str) -> None:
+        """Varsel om vannivået: hendelse alltid, varsler når «Varsle om vannivå» er på."""
+        self.hass.bus.async_fire(
+            f"{DOMAIN}_vanniva", {"type": kind, "tittel": title, "melding": message}
+        )
+        if not self.settings.get("level_notify"):
+            return
+        if self.hass.services.has_service("persistent_notification", "create"):
+            if kind == "lav" or kind == "stoppet":
+                await self.hass.services.async_call(
+                    "persistent_notification", "create",
+                    {"notification_id": f"{DOMAIN}_vanniva", "title": title, "message": message},
+                    blocking=False,
+                )
+            elif self.hass.services.has_service("persistent_notification", "dismiss"):
+                await self.hass.services.async_call(
+                    "persistent_notification", "dismiss",
+                    {"notification_id": f"{DOMAIN}_vanniva"}, blocking=False,
+                )
+        for tjeneste in split_names(self.cfg(CONF_NOTIFY) or ""):
+            domain, _, name = tjeneste.partition(".")
+            if not name:
+                domain, name = "notify", domain
+            if not self.hass.services.has_service(domain, name):
+                _LOGGER.warning("Fant ikke varslingstjenesten %s.%s", domain, name)
+                continue
+            await self.hass.services.async_call(
+                domain, name, {"title": title, "message": message}, blocking=False
+            )
+
+    def _level_snapshot(self, now: datetime) -> dict:
+        if not self.has_level:
+            return {"configured": False}
+        since = self._dry_since()
+        return {
+            "configured": True,
+            "state": self.level_state(now),
+            "wet": self._level_wet(),
+            "sensor": self.cfg(CONF_LEVEL_SENSOR),
+            "valve": self._fill_valve(),
+            "dry_since": since,
+            "dry_minutes": round((now - since).total_seconds() / 60, 1) if since else None,
+            "delay": _f(self.settings.get("level_dry_minutes"), 45),
+            "filling": self._fill_started is not None,
+            "fill_started": self._fill_started,
+            "fill_minutes": round((now - self._fill_started).total_seconds() / 60, 1)
+            if self._fill_started else None,
+            "fill_max": _f(self.settings.get("fill_max_minutes"), 60),
+            "fill_last_minutes": self.counters.get("fill_last_minutes"),
+            "blocked": self._fill_blocked,
+            "reason": self._level_reason,
+            "auto_fill": bool(self.settings.get("auto_fill")),
+            "notified": self._level_notified,
+        }
 
     async def async_boost(self, minutes: float = 30) -> None:
         self._boost_until = dt_util.now() + timedelta(minutes=minutes)
@@ -1835,6 +2051,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             "override": self._override_until is not None
             and now < self._override_until,
             "boost_until": self._boost_until,
+            "level": self._level_snapshot(now),
             "sprinkler_running": self.sprinkler_running,
             "sprinkler_left": round(self.sprinkler_left, 1),
             "sprinkler_today": round(self.counters["sprinkler_today"], 1),
