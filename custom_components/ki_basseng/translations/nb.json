@@ -23,7 +23,11 @@
           "valve_switch": "Vannventil for spreder",
           "weather_entity": "Værmelding (temperatur og skydekke fremover)",
           "cover_entity": "Pooltak-entitet (valgfritt – uten den styres taket med bryteren «Pooltak på»)",
-          "presence_entities": "Tilstedeværelse (personer, soner eller brytere – «på» betyr hjemme)"
+          "presence_entities": "Tilstedeværelse (personer, soner eller brytere – «på» betyr hjemme)",
+          "cover_invert": "Pooltak-sensoren er «på» når taket er ÅPENT (dør/vindu-sensor)",
+          "house_sensor": "Temperatur i bassenghuset (vintermodus)",
+          "heater_entities": "Varmeelementer i bassenghuset (vintermodus)",
+          "calendar_entity": "Kalender klorloggen også skal skrives til (f.eks. Google)"
         }
       },
       "basseng": {
@@ -74,7 +78,11 @@
           "valve_switch": "Vannventil for spreder",
           "weather_entity": "Værmelding (temperatur og skydekke fremover)",
           "cover_entity": "Pooltak-entitet (valgfritt – uten den styres taket med bryteren «Pooltak på»)",
-          "presence_entities": "Tilstedeværelse (personer, soner eller brytere – «på» betyr hjemme)"
+          "presence_entities": "Tilstedeværelse (personer, soner eller brytere – «på» betyr hjemme)",
+          "cover_invert": "Pooltak-sensoren er «på» når taket er ÅPENT (dør/vindu-sensor)",
+          "house_sensor": "Temperatur i bassenghuset (vintermodus)",
+          "heater_entities": "Varmeelementer i bassenghuset (vintermodus)",
+          "calendar_entity": "Kalender klorloggen også skal skrives til (f.eks. Google)"
         }
       },
       "basseng": {
@@ -102,7 +110,9 @@
           "oppvarming": "Oppvarming",
           "boost": "Boost",
           "spreder": "Spreder",
-          "solvarme": "Solvarme"
+          "solvarme": "Solvarme",
+          "vinter": "Vinter",
+          "frostsikring": "Frostsikring"
         }
       },
       "nattsenking": {

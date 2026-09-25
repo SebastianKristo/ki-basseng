@@ -17,9 +17,13 @@ from . import termisk
 from .const import (
     CHLORINE_HISTORY,
     CONF_AREA,
+    CONF_CALENDAR,
     CONF_CLIMATE,
     CONF_COLLECTOR_AREA,
     CONF_COVER,
+    CONF_COVER_INVERT,
+    CONF_HEATERS,
+    CONF_HOUSE_SENSOR,
     CONF_CURRENCY,
     CONF_FLOW,
     CONF_HP_NOMINAL,
@@ -46,15 +50,18 @@ from .const import (
     DEFAULT_VOLUME,
     DOMAIN,
     FALLBACK_HOURS,
+    FROST_HYSTERESIS,
     HEAT_HYSTERESIS,
     HP_MARGIN_W,
     MODE_BOOST,
     MODE_FILTER,
+    MODE_FROST,
     MODE_HEATING,
     MODE_MAINTENANCE,
     MODE_MANUAL,
     MODE_REST,
     MODE_SOLAR,
+    MODE_WINTER,
     NIGHT_HOURS,
     NIGHT_PENALTY,
     POWER_NOISE_W,
@@ -145,6 +152,8 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         self._setback_ended: datetime | None = None
         self._setpoint_sent: tuple[float, datetime] | None = None
         self._loss_window: dict | None = None
+        self._heaters_on: bool = False
+        self._winter_hp_off: bool = False
 
     # ------------------------------------------------------------------
     # Oppsett
@@ -162,6 +171,31 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         self.chlorine = list(stored.get("chlorine") or [])[-CHLORINE_HISTORY:]
         for key, value in DEFAULT_COUNTERS.items():
             self.counters.setdefault(key, value)
+
+        # Varmepumpetilstanden må overleve en omstart. Før lå den bare i minnet:
+        # startet Home Assistant på nytt mens integrasjonen hadde slått av
+        # varmepumpa (natt eller manglende sirkulasjon), glemte den det, trodde
+        # pumpa var slått av med vilje og ba aldri om varme igjen.
+        hp = stored.get("hp")
+        if isinstance(hp, dict):
+            self._hp_resume = bool(hp.get("resume"))
+            self._hp_target = hp.get("target")
+            self._setback_on = bool(hp.get("setback_on"))
+            self._heaters_on = bool(hp.get("heaters_on"))
+            self._winter_hp_off = bool(hp.get("winter_hp_off"))
+        else:
+            # Første start med denne versjonen: står varmepumpa av og vi styrer den,
+            # regnes det som vår egen avslåing, så den kommer tilbake med sirkulasjonen.
+            climate = self.cfg(CONF_CLIMATE)
+            state = self.hass.states.get(climate) if climate else None
+            if (
+                state is not None
+                and state.state == "off"
+                and self.settings.get("manage_heatpump")
+                and not self.settings.get("winter_mode")
+            ):
+                self._hp_resume = True
+                _LOGGER.info("Varmepumpa står av ved oppstart; setter den på med sirkulasjonen")
 
         # Basislast kan være endret i options etter oppsett
         if "pump_baseline" not in (stored.get("settings") or {}):
@@ -187,6 +221,13 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
                 "day": self._day,
                 "learned": self.learned,
                 "chlorine": self.chlorine,
+                "hp": {
+                    "resume": self._hp_resume,
+                    "target": self._hp_target,
+                    "setback_on": self._setback_on,
+                    "heaters_on": self._heaters_on,
+                    "winter_hp_off": self._winter_hp_off,
+                },
             }
         )
         self._save_pending = False
@@ -292,6 +333,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         mode, desired, reason = self._decide(now)
         await self._apply(mode, desired, now)
         await self._handle_sprinkler(now)
+        await self._guard_winter(now)
         await self._guard_setback(now)
         await self._guard_heatpump(now)
         await self._guard_setpoint(now)
@@ -444,8 +486,17 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             from_list(attrs.get("tomorrow"), tomorrow)
         return today, tomorrow
 
+    @property
+    def winter(self) -> bool:
+        return bool(self.settings.get("winter_mode"))
+
+    def _turnover_target(self) -> float:
+        if self.winter:
+            return _f(self.settings.get("winter_turnovers"), 0.5)
+        return _f(self.settings.get("turnovers"), 1.5)
+
     def _needed_hours(self) -> float:
-        return self.turnover_hours * _f(self.settings.get("turnovers"), 1.5)
+        return self.turnover_hours * self._turnover_target()
 
     def _build_plan(self, now: datetime) -> None:
         today, tomorrow = self._prices()
@@ -526,9 +577,40 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             return not self._setback_on
         return self._heat_window(now)
 
+    def _best_temp(self) -> float | None:
+        if self._temp_est is not None:
+            return self._temp_est
+        return self._water_temp()
+
     def _needs_heat(self) -> bool:
-        temp = self._temp_est
+        temp = self._best_temp()
         return temp is not None and temp < self.target_temp() - HEAT_HYSTERESIS
+
+    def heat_block(self, now: datetime) -> str | None:
+        """Hvorfor varmer den ikke, når vannet er under målet? None når alt er som det skal."""
+        temp = self._best_temp()
+        if temp is None or temp >= self.target_temp() - HEAT_HYSTERESIS:
+            return None
+        if self.winter:
+            return "Vintermodus er på"
+        if not self.cfg(CONF_CLIMATE):
+            return "Ingen varmepumpe er satt opp"
+        state = self._state(CONF_CLIMATE)
+        if state is None:
+            return "Varmepumpa svarer ikke"
+        if self._setback_on and self._setback:
+            til = f" til {self._setback.end:%H:%M}" if self._setback.end else ""
+            return f"Nattsenking{til}"
+        if not self.settings["heat_priority"]:
+            return "Varmeprioritet er av"
+        if not self._heat_allowed(now):
+            return (
+                f"Utenfor varmevinduet {int(_f(self.settings.get('heat_start'), 6)):02d}"
+                f"–{int(_f(self.settings.get('heat_end'), 22)):02d}"
+            )
+        if state.state == "off" and not self._hp_resume:
+            return "Varmepumpa er slått av utenfor integrasjonen"
+        return None
 
     @property
     def turnovers_done(self) -> float:
@@ -536,7 +618,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
 
     @property
     def turnovers_left(self) -> float:
-        return max(0.0, _f(self.settings.get("turnovers"), 1.5) - self.turnovers_done)
+        return max(0.0, self._turnover_target() - self.turnovers_done)
 
     def _decide(self, now: datetime) -> tuple[str, bool | None, str]:
         if not self.settings["auto"]:
@@ -551,6 +633,9 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             igjen = int((self._boost_until - now).total_seconds() // 60) + 1
             return MODE_BOOST, True, f"Boost i {igjen} min til"
         self._boost_until = None
+
+        if self.winter:
+            return self._decide_winter(now)
 
         heat = self._heat_running() or (self._hp_resume and self._needs_heat())
         if heat and self.settings["heat_priority"] and self._heat_allowed(now):
@@ -584,14 +669,111 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             return MODE_FILTER, True, f"Filtrerer, {left:.2f} omsetninger igjen"
 
         pulse = _f(self.settings.get("pulse_minutes"), 0)
+        blokk = self.heat_block(now)
+        hvorfor = f" · varmer ikke: {blokk}" if blokk else ""
         if pulse > 0:
             on = now.minute < pulse
             return (
                 MODE_MAINTENANCE,
                 on,
-                f"Dagens mål er nådd, {int(pulse)} min sirkulasjon per time",
+                f"Dagens mål er nådd, {int(pulse)} min sirkulasjon per time{hvorfor}",
             )
-        return MODE_REST, False, "Dagens mål er nådd"
+        return MODE_REST, False, f"Dagens mål er nådd{hvorfor}"
+
+    # -- vinter ----------------------------------------------------------
+    def _frost_temp(self) -> float | None:
+        """Temperaturen frostsikringen styrer etter: bassenghuset, ellers ute."""
+        house = self._num(CONF_HOUSE_SENSOR)
+        return house if house is not None else self._outdoor_now()
+
+    def _decide_winter(self, now: datetime) -> tuple[str, bool | None, str]:
+        ute = self._outdoor_now()
+        grense = _f(self.settings.get("frost_pump_below"), 0.0)
+        if ute is not None and ute < grense:
+            return (
+                MODE_FROST,
+                True,
+                f"Frostsikring: {ute:.1f} °C ute, vannet holdes i bevegelse",
+            )
+        left = self.turnovers_left
+        if left > 0.005 and (not self._plan or now.hour in self._plan):
+            return MODE_FILTER, True, f"Vinterfiltrering, {left:.2f} omsetninger igjen"
+        return MODE_WINTER, False, "Vintermodus – bassenget hviler"
+
+    async def _switch(self, entity_id: str, on: bool) -> None:
+        domain = entity_id.split(".", 1)[0]
+        if domain == "climate":
+            await self.hass.services.async_call(
+                "climate", "set_hvac_mode",
+                {"entity_id": entity_id, "hvac_mode": "heat" if on else "off"},
+                blocking=False,
+            )
+            return
+        await self.hass.services.async_call(
+            "homeassistant", "turn_on" if on else "turn_off",
+            {"entity_id": entity_id}, blocking=False,
+        )
+
+    async def _guard_winter(self, now: datetime) -> None:
+        """Vinter: varmepumpa av, varmeelementene i bassenghuset styrt mot frost.
+
+        Elementene slås på når det er kaldere enn grensen og av igjen to grader
+        over, så de ikke klikker av og på rundt én verdi. Uten føler i
+        bassenghuset brukes utetemperaturen.
+        """
+        climate = self.cfg(CONF_CLIMATE)
+        heaters = self.cfg(CONF_HEATERS) or []
+        if isinstance(heaters, str):
+            heaters = [heaters]
+
+        if not self.winter:
+            if self._winter_hp_off:
+                # Ut av vintermodus: varmepumpa kommer tilbake med sirkulasjonen
+                self._winter_hp_off = False
+                self._hp_resume = True
+                self._save_pending = True
+            if self._heaters_on and heaters:
+                for entity in heaters:
+                    await self._switch(entity, False)
+                self._heaters_on = False
+                self._save_pending = True
+            return
+
+        if climate and not self._winter_hp_off:
+            state = self.hass.states.get(climate)
+            if state is not None and state.state not in UNKNOWN and state.state != "off":
+                await self._switch(climate, False)
+            self._winter_hp_off = True
+            self._hp_resume = False
+            self._save_pending = True
+            await self._logbook("Vintermodus: varmepumpa er slått av.", climate)
+
+        if not heaters:
+            return
+        temp = self._frost_temp()
+        if temp is None:
+            return
+        grense = _f(self.settings.get("frost_house_min"), 5.0)
+        if not self._heaters_on and temp < grense:
+            self._heaters_on = True
+        elif self._heaters_on and temp > grense + FROST_HYSTERESIS:
+            self._heaters_on = False
+        else:
+            # Hold elementene der vi har bestemt, også om noen har rørt dem
+            for entity in heaters:
+                state = self.hass.states.get(entity)
+                if state is None or state.state in UNKNOWN:
+                    continue
+                on = state.state not in ("off",)
+                if on != self._heaters_on:
+                    await self._switch(entity, self._heaters_on)
+            return
+        self._save_pending = True
+        for entity in heaters:
+            await self._switch(entity, self._heaters_on)
+        await self._logbook(
+            f"Frostsikring: varmeelementene {'på' if self._heaters_on else 'av'} ({temp:.1f} °C)."
+        )
 
     async def _apply(self, mode: str, desired: bool | None, now: datetime) -> None:
         pump = self.cfg(CONF_PUMP_SWITCH)
@@ -727,7 +909,26 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             return bool(self.settings.get("cover_on"))
         if state.entity_id.startswith("cover."):
             return state.state in ("closed", "closing")
-        return state.state == "on"
+        on = state.state == "on"
+        # En dør- eller vindussensor er «på» når den er ÅPEN, altså når taket er av
+        if self.cover_is_opening_sensor(state):
+            return not on
+        return on
+
+    def cover_is_opening_sensor(self, state: Any = None) -> bool:
+        state = state or self._state(CONF_COVER)
+        if state is None or state.entity_id.startswith("cover."):
+            return False
+        if self.cfg(CONF_COVER_INVERT):
+            return True
+        return state.attributes.get("device_class") in (
+            "door", "window", "opening", "garage_door"
+        )
+
+    @property
+    def cover_source(self) -> str:
+        entity = self.cfg(CONF_COVER)
+        return entity if entity and self._state(CONF_COVER) is not None else "bryter"
 
     def target_temp(self) -> float:
         """Temperaturen bassenget skal holde nå.
@@ -912,6 +1113,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             self.settings.get("smart_setback")
             and self.settings.get("manage_heatpump")
             and self.cfg(CONF_CLIMATE)
+            and not self.winter
         )
 
     def _plan_setback(self, now: datetime) -> None:
@@ -1001,7 +1203,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
     async def _guard_setpoint(self, now: datetime) -> None:
         """Hold varmepumpens settpunkt på ønsket temperatur (minus borte-senking)."""
         climate = self.cfg(CONF_CLIMATE)
-        if not climate or not self.settings.get("manage_setpoint"):
+        if not climate or not self.settings.get("manage_setpoint") or self.winter:
             return
         target = round(self.target_temp(), 1)
         self._hp_target = target
@@ -1032,18 +1234,28 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         return split_names(self.settings.get("chlorine_names", ""))
 
     async def async_log_chlorine(
-        self, count: int = 1, note: str = "", who: str = ""
-    ) -> None:
-        now = dt_util.now()
-        self.chlorine.append(
-            {
+        self,
+        count: int = 1,
+        note: str = "",
+        who: str = "",
+        when: datetime | None = None,
+        mirror: bool = True,
+    ) -> dict:
+        now = dt_util.as_local(when) if when else dt_util.now()
+        # Tidspunktet er nøkkelen for sletting; to innslag i samme sekund får et
+        # mikrosekund i forskjell
+        while any(r.get("tid") == now.isoformat() for r in self.chlorine):
+            now += timedelta(microseconds=1)
+        entry = {
                 "tid": now.isoformat(),
                 "antall": int(count),
                 "notat": note or "",
                 "hvem": (who or "").strip(),
                 "vanntemp": round(self._temp_est, 1) if self._temp_est is not None else None,
-            }
-        )
+        }
+        self.chlorine.append(entry)
+        # Etterregistrerte innslag havner på riktig plass i tid
+        self.chlorine.sort(key=lambda r: str(r.get("tid")))
         self.chlorine = self.chlorine[-CHLORINE_HISTORY:]
         self.counters["chlorine_total"] = int(self.counters.get("chlorine_total", 0)) + int(count)
         self._save_pending = True
@@ -1053,17 +1265,95 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             f"{int(count)} klortablett{flertall} lagt i{hvem}"
             + (f": {note}" if note else "")
         )
+        if mirror:
+            await self._mirror_chlorine(entry)
         await self.async_request_refresh()
+        return entry
+
+    async def async_delete_chlorine(self, tid: str) -> bool:
+        """Fjern ett innslag, identifisert ved tidspunktet sitt."""
+        for i, row in enumerate(self.chlorine):
+            if row.get("tid") == tid:
+                removed = self.chlorine.pop(i)
+                self.counters["chlorine_total"] = max(
+                    0, int(self.counters.get("chlorine_total", 0)) - int(removed.get("antall", 1))
+                )
+                self._save_pending = True
+                await self._unmirror_chlorine(removed)
+                await self.async_request_refresh()
+                return True
+        return False
+
+    # -- speiling til en ekstern kalender (Google, lokal …) ---------------
+    @staticmethod
+    def chlorine_summary(row: dict) -> str:
+        antall = int(row.get("antall", 1))
+        hvem = f" · {row['hvem']}" if row.get("hvem") else ""
+        stk = f" ({antall} stk)" if antall != 1 else ""
+        return f"Klortablett{hvem}{stk}"
+
+    async def _mirror_chlorine(self, row: dict) -> None:
+        calendar = self.cfg(CONF_CALENDAR)
+        if not calendar or not self.hass.services.has_service("calendar", "create_event"):
+            return
+        if self._is_own_calendar(calendar):
+            return
+        start = dt_util.parse_datetime(str(row.get("tid")))
+        if start is None:
+            return
+        try:
+            await self.hass.services.async_call(
+                "calendar",
+                "create_event",
+                {
+                    "entity_id": calendar,
+                    "summary": self.chlorine_summary(row),
+                    "description": row.get("notat") or "Logget av KI Basseng",
+                    "start_date_time": start.isoformat(),
+                    "end_date_time": (start + timedelta(minutes=15)).isoformat(),
+                },
+                blocking=True,
+            )
+        except Exception as err:  # noqa: BLE001 – kalenderen er et tillegg
+            _LOGGER.warning("Kunne ikke skrive klortabletten til %s: %s", calendar, err)
+
+    def _is_own_calendar(self, entity_id: str) -> bool:
+        """Klorloggen er allerede en kalender; å speile til den ville gitt dobbelt."""
+        from homeassistant.helpers import entity_registry as er
+
+        entry = er.async_get(self.hass).async_get(entity_id)
+        return entry is not None and entry.platform == DOMAIN
+
+    async def _unmirror_chlorine(self, row: dict) -> None:
+        """Slett den speilede hendelsen, hvis kalenderen lar seg skrive til.
+
+        `calendar`-tjenestene kan lage hendelser, men ikke slette dem. Derfor går
+        vi til selve kalenderentiteten, finner hendelsen på tidspunktet og sletter
+        den med uid-en. Kan kalenderen ikke slette (Google i noen oppsett), blir
+        den stående – loggen i integrasjonen er fasiten.
+        """
+        calendar = self.cfg(CONF_CALENDAR)
+        start = dt_util.parse_datetime(str(row.get("tid")))
+        if not calendar or start is None or self._is_own_calendar(calendar):
+            return
+        component = self.hass.data.get("calendar")
+        entity = component.get_entity(calendar) if component and hasattr(component, "get_entity") else None
+        if entity is None or not hasattr(entity, "async_delete_event"):
+            return
+        try:
+            events = await entity.async_get_events(
+                self.hass, start - timedelta(minutes=1), start + timedelta(minutes=16)
+            )
+            for event in events:
+                if (event.summary or "").startswith("Klortablett") and event.uid:
+                    await entity.async_delete_event(event.uid)
+                    return
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Kunne ikke slette klortabletten i %s: %s", calendar, err)
 
     async def async_undo_chlorine(self) -> None:
-        if not self.chlorine:
-            return
-        last = self.chlorine.pop()
-        self.counters["chlorine_total"] = max(
-            0, int(self.counters.get("chlorine_total", 0)) - int(last.get("antall", 1))
-        )
-        self._save_pending = True
-        await self.async_request_refresh()
+        if self.chlorine:
+            await self.async_delete_chlorine(self.chlorine[-1].get("tid"))
 
     def _chlorine_info(self, now: datetime) -> dict:
         last = None
@@ -1117,7 +1407,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
           de to reglene slåss: én slår av, den andre slår på igjen.
         """
         climate = self.cfg(CONF_CLIMATE)
-        if not climate or not self.settings.get("force_heat", True):
+        if not climate or not self.settings.get("force_heat", True) or self.winter:
             return
         state = self.hass.states.get(climate)
         if state is None or state.state != "auto":
@@ -1165,7 +1455,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             return
 
         if self.pump_on and self._hp_resume and since > 120:
-            if self._setback_on:
+            if self._setback_on or self.winter:
                 return
             mode = self.data.get("mode") if self.data else None
             if mode == MODE_MAINTENANCE and not self.settings["pulse_with_heat"]:
@@ -1411,7 +1701,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             "needed_hours": round(self._needed_hours(), 2),
             "turnover_hours": round(self.turnover_hours, 2),
             "turnovers_done": round(self.turnovers_done, 3),
-            "turnovers_target": _f(self.settings.get("turnovers"), 1.5),
+            "turnovers_target": self._turnover_target(),
             "turnovers_left": round(self.turnovers_left, 3),
             "recommended_turnovers": self._recommended(temp),
             "volume_today": round(self.counters["volume_today"], 2),
@@ -1446,6 +1736,13 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             "learned": dict(self.learned),
             "setback": self._setback_snapshot(setback, now),
             "setback_active": self._setback_on,
+            "heat_block": self.heat_block(now),
+            "winter": self.winter,
+            "frost_temp": self._frost_temp() if self.winter else None,
+            "house_temp": self._num(CONF_HOUSE_SENSOR),
+            "heaters_on": self._heaters_on,
+            "cover_source": self.cover_source,
+            "cover_sensor": self.cover_is_opening_sensor(),
             "chlorine": chlorine,
             "override_until": self._override_until,
             "override": self._override_until is not None

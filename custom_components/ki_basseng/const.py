@@ -6,12 +6,13 @@ from homeassistant.const import Platform
 
 DOMAIN = "ki_basseng"
 NAME = "KI Basseng"
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 STORAGE_VERSION = 1
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
+    Platform.CALENDAR,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
@@ -36,6 +37,10 @@ CONF_VALVE = "valve_switch"
 CONF_WEATHER = "weather_entity"
 CONF_COVER = "cover_entity"
 CONF_PRESENCE = "presence_entities"
+CONF_COVER_INVERT = "cover_invert"
+CONF_HOUSE_SENSOR = "house_sensor"
+CONF_HEATERS = "heater_entities"
+CONF_CALENDAR = "calendar_entity"
 
 CONF_VOLUME = "volume_m3"
 CONF_FLOW = "flow_m3h"
@@ -69,6 +74,8 @@ MODE_HEATING = "oppvarming"
 MODE_BOOST = "boost"
 MODE_SPRINKLER = "spreder"
 MODE_SOLAR = "solvarme"
+MODE_WINTER = "vinter"
+MODE_FROST = "frostsikring"
 
 MODES = [
     MODE_MANUAL,
@@ -79,6 +86,8 @@ MODES = [
     MODE_BOOST,
     MODE_SPRINKLER,
     MODE_SOLAR,
+    MODE_WINTER,
+    MODE_FROST,
 ]
 
 # --------------------------------------------------------------------------
@@ -121,6 +130,8 @@ DEFAULT_SETTINGS: dict = {
     "cover_on": False,
     # Kjør sirkulasjonen når solfangeren har varme å gi
     "solar_harvest": True,
+    # Vinter: ingen oppvarming, lite sirkulasjon, frostsikring av bassenghuset
+    "winter_mode": False,
     # tall
     "turnovers": 1.5,
     "pulse_minutes": 10.0,
@@ -140,6 +151,9 @@ DEFAULT_SETTINGS: dict = {
     "u_covered": 5.0,
     "cover_solar": 60.0,  # % av solen som slipper gjennom taket
     "chlorine_days": 7.0,
+    "frost_house_min": 5.0,  # varmeelementene på under dette i bassenghuset
+    "frost_pump_below": 0.0,  # sirkulasjon hele tiden under dette ute
+    "winter_turnovers": 0.5,
     # Hvem som kan legge i klortabletter, kommaseparert: «Sebastian, Ida»
     "chlorine_names": "",
     # valg
@@ -185,12 +199,17 @@ SERVICE_BOOST = "boost"
 SERVICE_SET_PROFILE = "sett_profil"
 SERVICE_LOG_CHLORINE = "logg_klortablett"
 SERVICE_UNDO_CHLORINE = "angre_klortablett"
+SERVICE_DELETE_CHLORINE = "slett_klortablett"
 
 ATTR_MINUTES = "minutter"
 ATTR_PROFILE = "profil"
 ATTR_COUNT = "antall"
 ATTR_NOTE = "notat"
 ATTR_WHO = "hvem"
+ATTR_WHEN = "tidspunkt"
+ATTR_ID = "tid"
+# Varmeelementene slås av igjen så mange grader over grensen
+FROST_HYSTERESIS = 2.0
 
 # Hvor mange klortablett-innslag som tas vare på
 CHLORINE_HISTORY = 50

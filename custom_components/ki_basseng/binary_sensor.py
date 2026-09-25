@@ -84,6 +84,18 @@ BINARY_SENSORS: tuple[KiBinaryDescription, ...] = (
         value=lambda d: d.get("present"),
     ),
     KiBinaryDescription(
+        key="frostsikring_varmer",
+        name="Frostsikring varmer",
+        icon="mdi:radiator",
+        device_class=BinarySensorDeviceClass.HEAT,
+        value=lambda d: d.get("heaters_on") if d.get("winter") else False,
+        attrs=lambda d: {
+            "vintermodus": d.get("winter"),
+            "temperatur": d.get("frost_temp"),
+            "bassenghus": d.get("house_temp"),
+        },
+    ),
+    KiBinaryDescription(
         key="varmepumpe_venter",
         name="Varmepumpe venter",
         icon="mdi:heat-pump-outline",

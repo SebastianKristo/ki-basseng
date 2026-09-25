@@ -37,6 +37,11 @@ CRITERION_COST = "kostnad"
 CRITERION_ENERGY = "energi"
 CRITERIA = [CRITERION_BOTH, CRITERION_COST, CRITERION_ENERGY]
 
+# Vannet må være innenfor dette av målet når bassenget skal være klart
+READY_MARGIN = 0.15
+# Ligger vannet mer enn dette under målet, senkes det ikke før det er tatt igjen
+BEHIND_MARGIN = 0.5
+
 # Senking må spare minst dette for å være verdt å slå av varmepumpen
 MIN_SAVING_KWH = 0.2
 MIN_SAVING_SHARE = 0.02
@@ -286,6 +291,15 @@ def optimise_setback(
     if baseline.kwh <= 0:
         decision.reason = "Varmepumpen trenger ikke gå i natt uansett"
         return decision
+    # Ligger vannet alt under målet, skal det tas igjen først. Og rekker ikke
+    # varmepumpa målet selv om den går hele natta, er det ingenting å senke:
+    # da ville senkingen bare gjort morgenen kaldere.
+    if start_temp < target - BEHIND_MARGIN:
+        decision.reason = "Vannet er under målet – tar igjen varmen først"
+        return decision
+    if baseline.temp_end < target - READY_MARGIN:
+        decision.reason = "Varmepumpa rekker ikke målet selv om den går hele natta"
+        return decision
 
     night_idx = sorted(i for i in night if i < len(horizon))
     best: tuple[float, int, int, Result] | None = None
@@ -297,7 +311,7 @@ def optimise_setback(
             off = set(range(a, b + 1))
             res = simulate(pool, horizon, start_temp, target, covered, off)
             decision.candidates += 1
-            ok_ready = res.temp_end >= min(target, baseline.temp_end) - 0.15
+            ok_ready = res.temp_end >= target - READY_MARGIN
             ok_drop = res.temp_min >= target - max_drop
             save_kwh = baseline.kwh - res.kwh
             save_cost = baseline.cost - res.cost

@@ -90,6 +90,8 @@ SENSORS: tuple[KiSensorDescription, ...] = (
             "snittpris_plan": d.get("price_plan_avg"),
             "snittpris_dogn": d.get("price_day_avg"),
             "overstyrt": d.get("override"),
+            "varmer_ikke_fordi": d.get("heat_block"),
+            "vintermodus": d.get("winter"),
         },
     ),
     KiSensorDescription(
@@ -274,6 +276,8 @@ SENSORS: tuple[KiSensorDescription, ...] = (
         value=lambda d, c: d.get("heat_loss_w"),
         attrs=lambda d, c: {
             "pooltak": d.get("covered"),
+            "pooltak_kilde": d.get("cover_source"),
+            "pooltak_sensor": d.get("cover_sensor"),
             "utetemperatur": d.get("outdoor"),
             "solgevinst_w": d.get("solar_gain_w"),
             "laert_tapsfaktor_uten_tak": (d.get("learned") or {}).get("loss_open"),

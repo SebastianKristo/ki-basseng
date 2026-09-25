@@ -67,7 +67,7 @@ bruker til å vurdere varmen. Den tar inn:
 | Tid | Varmevinduet bestemmer natten og når bassenget skal være varmt igjen |
 | Tilstedeværelse | Personer, soner eller brytere («på» er hjemme). Er ingen hjemme, senkes målet |
 | Ønsket temperatur | Et tall i integrasjonen. Den holder varmepumpens settpunkt der |
-| Pooltak | Bryteren *Pooltak på*. Har taket en egen entitet (cover, binær, bryter), kan den brukes i stedet |
+| Pooltak | Bryteren *Pooltak på*, eller en entitet: cover, bryter eller dør-/vindussensor (på = åpent) |
 | Solfanger | Areal i oppsettet. Med solfanger går pumpen når sola gir varme |
 
 Bassenget er et stort varmelager: 41 m³ vann holder 48 kWh per grad. Tapet går
@@ -125,6 +125,10 @@ brukes i beregningene og vises som `modellestimat`.
 
 ### Klortabletter
 
+Klorloggen er også en kalender, `calendar.ki_basseng_klorlogg`, der du kan legge til og
+slette tabletter. Vil du ha tablettene i Google Kalender, velger du den under Utstyr, så
+skrives hver tablett dit også.
+
 Trykk *Logg klortablett*, eller kall `ki_basseng.logg_klortablett`, når du legger
 i tabletter. Skriv navnene i husstanden i *Navn i klorloggen* («Sebastian, Ida»), så kan
 du huke av hvem som la i. Navnet kommer med i loggen, og tjenesten tar det som `hvem:`. Integrasjonen husker de 50 siste innslagene med tid, antall, notat
@@ -133,6 +137,26 @@ og vanntemperatur, og skriver i loggboka.
 *Neste klortablett* regnes ut fra intervallet (7 dager som standard). Intervallet
 blir kortere i varmt vann, fordi klor forbrukes raskere over 24 °C. Ved 32 °C er
 det halvert. *Klortablett bør legges i* slår seg på når det er på tide.
+
+### Vintermodus
+
+Slå på *Vintermodus* når sesongen er over.
+
+- **Varmepumpa** står av.
+- **Varmeelementene i bassenghuset** holder temperaturen over *Frostsikring: varme på under*
+  (5 °C), med to graders slingringsmonn.
+- **Pumpa** sirkulerer hele tiden når det er kaldere ute enn *Frostsikring: sirkulasjon
+  under* (0 °C). Ellers filtrerer den *Omsetninger per døgn om vinteren*.
+
+Velg føleren og elementene under Utstyr i oppsettet.
+
+### Når den ikke varmer
+
+Er vannet under målet uten at varmepumpa jobber, står grunnen i attributtet
+`varmer_ikke_fordi` på *Pumpemodus* og i begrunnelsen. Grunnen kan være nattsenking,
+varmeprioritet av, utenfor varmevinduet, eller at varmepumpa er slått av utenfor
+integrasjonen. Tilstanden til varmepumpa lagres, så en omstart midt på natta ikke gjør at
+den blir stående av.
 
 ### Spreder
 

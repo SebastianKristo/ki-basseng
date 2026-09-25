@@ -190,6 +190,8 @@ async def test_nattsenking_slar_av_og_pa(hass, oppsett):
 async def test_ingen_ny_senking_rett_etter_avbrudd(hass, oppsett):
     k, kall = oppsett
     naa = dt_util.now()
+    # Utgangspunkt: ingen senking (den første oppdateringen kan ha planlagt en)
+    k._setback_on = False
     k._setback_ended = naa - timedelta(minutes=5)
     k._setback = termisk.SetbackDecision(True, naa, naa + timedelta(hours=1))
     await k._guard_setback(naa)
@@ -255,3 +257,126 @@ def test_split_names():
 
     assert split_names("") == []
     assert split_names("A, b ,a;;C") == ["A", "b", "C"]
+
+
+async def test_varmepumpetilstanden_overlever_omstart(hass, oppsett):
+    """Slo integrasjonen av varmepumpa før en omstart, skal den huske det."""
+    from custom_components.ki_basseng.coordinator import KiBassengCoordinator
+
+    k, _ = oppsett
+    k._hp_resume = True
+    k._setback_on = True
+    await k.async_persist()
+    ny = KiBassengCoordinator(hass, k.entry)
+    await ny.async_prepare()
+    assert ny._hp_resume and ny._setback_on
+
+
+async def test_forste_start_med_varmepumpa_av_gir_resume(hass, oppsett):
+    from custom_components.ki_basseng.coordinator import KiBassengCoordinator
+
+    k, _ = oppsett
+    await k._store.async_save({"settings": k.settings})  # lagring uten hp-nøkkel
+    hass.states.async_set(CLIMATE, "off", {"temperature": 27})
+    ny = KiBassengCoordinator(hass, k.entry)
+    await ny.async_prepare()
+    assert ny._hp_resume
+
+
+async def test_kaldt_vann_gir_oppvarming_ikke_vedlikehold(hass, oppsett):
+    """Morgenen det gjaldt: 25 °C, varmepumpa av i påvente av sirkulasjon."""
+    k, _ = oppsett
+    naa = dt_util.now().replace(hour=7)
+    k._setback_on = False
+    k._hp_resume = True
+    k._temp_est = 25.0
+    hass.states.async_set(CLIMATE, "off", {"temperature": 27})
+    modus, pa, _ = k._decide(naa)
+    assert modus == "oppvarming" and pa is True
+
+
+async def test_begrunnelse_nar_den_ikke_varmer(hass, oppsett):
+    k, _ = oppsett
+    naa = dt_util.now()
+    k._temp_est = 25.0
+    k._setback_on = False
+    k.settings["heat_priority"] = False
+    assert k.heat_block(naa) == "Varmeprioritet er av"
+    k.settings["heat_priority"] = True
+    hass.states.async_set(CLIMATE, "off", {"temperature": 27})
+    k._hp_resume = False
+    assert "utenfor integrasjonen" in k.heat_block(naa)
+    k._temp_est = 27.0
+    assert k.heat_block(naa) is None
+
+
+async def test_vintermodus_frostsikring(hass, oppsett):
+    k, kall = oppsett
+    on = async_mock_service(hass, "homeassistant", "turn_on")
+    off = async_mock_service(hass, "homeassistant", "turn_off")
+    k.entry.update_listeners.clear()
+    hass.config_entries.async_update_entry(k.entry, options={
+        "heater_entities": ["switch.varmeovn"], "house_sensor": "sensor.bassenghus"})
+    hass.states.async_set("switch.varmeovn", "off")
+    hass.states.async_set("sensor.bassenghus", "3.0")
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": _id(hass, "switch", "vintermodus")}, blocking=True)
+    await k.async_refresh()
+    await hass.async_block_till_done()
+    assert any(c.data["entity_id"] == "switch.varmeovn" for c in on), "varmen skal på under 5 °C"
+    assert any(c.data.get("hvac_mode") == "off" for c in kall["hvac"]), "varmepumpa av om vinteren"
+    assert k.data["mode"] in ("vinter", "filtrering")
+
+    hass.states.async_set("sensor.ute", "-3")
+    modus, pa, _ = k._decide(dt_util.now())
+    assert modus == "frostsikring" and pa
+
+    hass.states.async_set("sensor.bassenghus", "7.5")
+    await k.async_refresh()
+    await hass.async_block_till_done()
+    assert any(c.data["entity_id"] == "switch.varmeovn" for c in off), "av igjen over 7 °C"
+
+    k.settings["winter_mode"] = False
+    await k.async_refresh()
+    assert k._hp_resume, "varmepumpa skal tilbake når vinteren er over"
+
+
+async def test_pooltak_med_dorsensor(hass, oppsett):
+    """En dør-/vindussensor er «på» når den er åpen – da er taket av."""
+    k, _ = oppsett
+    hass.states.async_set("binary_sensor.pooltak", "on", {"device_class": "door"})
+    assert not k.covered()
+    hass.states.async_set("binary_sensor.pooltak", "off", {"device_class": "door"})
+    assert k.covered()
+
+
+async def test_klor_etterregistrering_sletting_og_kalender(hass, oppsett):
+    k, _ = oppsett
+    k.settings["chlorine_names"] = "Sebastian, Ida"
+    igaar = dt_util.now() - timedelta(days=1)
+    await hass.services.async_call(DOMAIN, "logg_klortablett", {"hvem": "Ida"}, blocking=True)
+    await hass.services.async_call(
+        DOMAIN, "logg_klortablett",
+        {"hvem": "Sebastian", "tidspunkt": igaar.isoformat()}, blocking=True)
+    assert [r["hvem"] for r in k.chlorine] == ["Sebastian", "Ida"], "sortert etter tid"
+
+    kal = _id(hass, "calendar", "klorlogg")
+    svar = await hass.services.async_call(
+        "calendar", "get_events",
+        {"entity_id": kal, "start_date_time": (igaar - timedelta(hours=1)).isoformat(),
+         "end_date_time": (dt_util.now() + timedelta(days=30)).isoformat()},
+        blocking=True, return_response=True)
+    titler = [e["summary"] for e in svar[kal]["events"]]
+    assert "Klortablett · Sebastian" in titler and "Klortablett · Ida" in titler
+
+    # Legg til fra kalenderen: tittelen er bare et navn
+    await hass.services.async_call(
+        "calendar", "create_event",
+        {"entity_id": kal, "summary": "Ida", "start_date": (igaar - timedelta(days=3)).date().isoformat(),
+         "end_date": (igaar - timedelta(days=2)).date().isoformat()},
+        blocking=True)
+    assert len(k.chlorine) == 3 and k.chlorine[0]["hvem"] == "Ida"
+
+    await hass.services.async_call(
+        DOMAIN, "slett_klortablett", {"tid": k.chlorine[1]["tid"]}, blocking=True)
+    assert [r["hvem"] for r in k.chlorine] == ["Ida", "Ida"]

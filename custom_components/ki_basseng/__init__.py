@@ -11,6 +11,8 @@ from homeassistant.helpers import config_validation as cv
 
 from .const import (
     ATTR_COUNT,
+    ATTR_ID,
+    ATTR_WHEN,
     ATTR_MINUTES,
     ATTR_NOTE,
     ATTR_PROFILE,
@@ -19,6 +21,7 @@ from .const import (
     PLATFORMS,
     PROFILE_OPTIONS,
     SERVICE_BOOST,
+    SERVICE_DELETE_CHLORINE,
     SERVICE_LOG_CHLORINE,
     SERVICE_SET_PROFILE,
     SERVICE_START_SPREDER,
@@ -55,6 +58,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_SET_PROFILE,
                 SERVICE_LOG_CHLORINE,
                 SERVICE_UNDO_CHLORINE,
+                SERVICE_DELETE_CHLORINE,
             ):
                 hass.services.async_remove(DOMAIN, service)
     return unloaded
@@ -98,7 +102,21 @@ def _register_services(hass: HomeAssistant) -> None:
                 call.data.get(ATTR_COUNT, 1),
                 call.data.get(ATTR_NOTE, ""),
                 call.data.get(ATTR_WHO, ""),
+                when=call.data.get(ATTR_WHEN),
             )
+
+    async def slett_klortablett(call: ServiceCall) -> None:
+        for coordinator in _coordinators(hass, call):
+            await coordinator.async_delete_chlorine(call.data[ATTR_ID])
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DELETE_CHLORINE,
+        slett_klortablett,
+        schema=vol.Schema(
+            {vol.Optional("entry_id"): cv.string, vol.Required(ATTR_ID): cv.string}
+        ),
+    )
 
     async def angre_klortablett(call: ServiceCall) -> None:
         for coordinator in _coordinators(hass, call):
@@ -116,6 +134,7 @@ def _register_services(hass: HomeAssistant) -> None:
                 ),
                 vol.Optional(ATTR_NOTE, default=""): cv.string,
                 vol.Optional(ATTR_WHO, default=""): cv.string,
+                vol.Optional(ATTR_WHEN): cv.datetime,
             }
         ),
     )

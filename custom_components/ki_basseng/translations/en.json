@@ -23,7 +23,11 @@
           "valve_switch": "Sprinkler water valve",
           "weather_entity": "Weather forecast (temperature and cloud cover)",
           "cover_entity": "Pool cover entity (optional – without it, use the «Pooltak på» switch)",
-          "presence_entities": "Presence (people, zones or switches – «on» means home)"
+          "presence_entities": "Presence (people, zones or switches – «on» means home)",
+          "cover_invert": "Cover sensor is «on» when the cover is OPEN (door/window sensor)",
+          "house_sensor": "Pool house temperature (winter mode)",
+          "heater_entities": "Pool house heaters (winter mode)",
+          "calendar_entity": "Calendar the chlorine log is also written to (e.g. Google)"
         }
       },
       "basseng": {
@@ -74,7 +78,11 @@
           "valve_switch": "Sprinkler water valve",
           "weather_entity": "Weather forecast (temperature and cloud cover)",
           "cover_entity": "Pool cover entity (optional – without it, use the «Pooltak på» switch)",
-          "presence_entities": "Presence (people, zones or switches – «on» means home)"
+          "presence_entities": "Presence (people, zones or switches – «on» means home)",
+          "cover_invert": "Cover sensor is «on» when the cover is OPEN (door/window sensor)",
+          "house_sensor": "Pool house temperature (winter mode)",
+          "heater_entities": "Pool house heaters (winter mode)",
+          "calendar_entity": "Calendar the chlorine log is also written to (e.g. Google)"
         }
       },
       "basseng": {
@@ -102,7 +110,9 @@
           "oppvarming": "Heating",
           "boost": "Boost",
           "spreder": "Sprinkler",
-          "solvarme": "Solar heat"
+          "solvarme": "Solar heat",
+          "vinter": "Winter",
+          "frostsikring": "Frost protection"
         }
       },
       "nattsenking": {
