@@ -94,6 +94,12 @@ SWITCHES: tuple[KiSwitchDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
     ),
     KiSwitchDescription(
+        key="vintermodus",
+        name="Vintermodus",
+        icon="mdi:snowflake",
+        setting="winter_mode",
+    ),
+    KiSwitchDescription(
         key="frostvakt",
         name="Frostvakt",
         icon="mdi:snowflake-alert",

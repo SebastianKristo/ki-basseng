@@ -65,11 +65,28 @@ logg_klortablett:
       example: Sebastian
       selector:
         text:
+    tidspunkt:
+      name: Tidspunkt
+      description: Når den ble lagt i. Tom betyr nå; bruk den til å etterregistrere.
+      required: false
+      selector:
+        datetime:
     notat:
       name: Notat
       description: Valgfritt, for eksempel merke eller hvor den ble lagt.
       required: false
       example: Flottøren, 200 g
+      selector:
+        text:
+
+slett_klortablett:
+  name: Slett klortablett
+  description: Fjerner ett innslag fra klorloggen (og fra den speilede kalenderen hvis den kan slette).
+  fields:
+    tid:
+      name: Tid
+      description: Tidspunktet til innslaget, slik det står i loggen (id-en).
+      required: true
       selector:
         text:
 

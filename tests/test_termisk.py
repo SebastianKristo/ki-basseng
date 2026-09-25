@@ -173,3 +173,21 @@ def test_klorintervall_kortere_i_varmt_vann():
     assert t.chlorine_interval_days(7, 20) == 7
     assert t.chlorine_interval_days(7, None) == 7
     assert t.chlorine_interval_days(7, 32) == pytest.approx(3.5)
+
+
+def test_ingen_senking_nar_vannet_er_bak():
+    """Ligger vannet et halvt grad eller mer under målet, tas det igjen først."""
+    luft = [14, 12, 11, 10, 9, 9, 10, 13, 16, 19, 21, 22]
+    d = t.optimise_setback(_basseng(), _timer(luft), 26.2, 27, False, set(range(8)), 12, 3)
+    assert not d.worth_it
+    assert "tar igjen" in d.reason
+
+
+def test_ingen_senking_nar_varmepumpa_ikke_rekker_malet():
+    """Rekker ikke pumpa målet selv om den går hele natta, blir morgenen bare
+    kaldere av å senke. Før godtok den å ende like langt unna som uten senking."""
+    b = _basseng(hp_nominal_w=500)
+    d = t.optimise_setback(b, _timer([4, 3, 2, 2, 2, 2, 3, 4]), 27, 27, False, set(range(7)), 8, 3,
+                           t.CRITERION_ENERGY)
+    assert not d.worth_it
+    assert "rekker ikke" in d.reason

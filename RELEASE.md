@@ -1,3 +1,60 @@
+# KI Basseng 1.5.0
+
+## Den varmet ikke om morgenen – rettet
+
+Bassenget kunne stå på 25 °C i vedlikehold om morgenen uten å varme. To feil samvirket:
+
+* **Varmepumpetilstanden overlevde ikke en omstart.** Integrasjonen husket bare i minnet at
+  den selv hadde slått av varmepumpa (for natta eller fordi sirkulasjonen manglet). Etter en
+  omstart eller oppdatering trodde den at pumpa var slått av med vilje, og ba aldri om varme
+  igjen. Nå lagres tilstanden. Første oppstart med denne versjonen regner en avslått
+  varmepumpe som integrasjonens egen, så den kommer tilbake med sirkulasjonen.
+* **Nattsenkingen var for snill med fristen.** Rakk ikke varmepumpa målet selv om den gikk
+  hele natta, godtok senkingen å ende like langt unna målet. Nå må vannet være tilbake på
+  målet når varmevinduet starter, ellers blir det ingen senking. Ligger vannet alt et halvt
+  grad under målet, tas det igjen før det senkes.
+
+**Hvorfor varmer den ikke?** Når vannet er under målet uten at den varmer, står grunnen i
+begrunnelsen og i attributtet `varmer_ikke_fordi` på pumpemodus. Mulige grunner:
+nattsenking til 06:00, varmeprioritet er av, utenfor varmevinduet, varmepumpa er slått av
+utenfor integrasjonen, eller varmepumpa svarer ikke. Kortet viser den som et varsel.
+
+## Vintermodus
+
+Ny bryter: **Vintermodus**. Med den på:
+
+* **Varmepumpa** slås av. Den settes ikke tilbake før vintermodus er av.
+* **Varmeelementene i bassenghuset** går på under *Frostsikring: varme på under* (5 °C) og
+  av igjen to grader over. Temperaturen tas fra føleren i bassenghuset, eller fra
+  utetemperaturen hvis det ikke finnes noen føler.
+* **Frostsikring:** under *Frostsikring: sirkulasjon under* (0 °C ute) går pumpa hele tiden
+  (modus `frostsikring`).
+* **Sirkulasjon** ellers etter *Omsetninger per døgn om vinteren* (0,5).
+
+Nytt i oppsettet under Utstyr: *Temperatur i bassenghuset* og *Varmeelementer* (bryter,
+`input_boolean`, `climate` eller lys).
+
+## Pooltak med dør- eller vindussensor
+
+En dør- eller vindussensor er «på» når den er åpen, altså når taket er av. Sensorer med
+device class door, window, opening eller garage_door tolkes riktig av seg selv. For andre
+finnes en ny avhaking i oppsettet: *Pooltak-sensoren er «på» når taket er ÅPENT*.
+
+## Klorloggen kan redigeres, og er en kalender
+
+* **Ny kalender, `calendar.ki_basseng_klorlogg`:** hver tablett er en hendelse, og neste
+  forfallsdag er en heldagshendelse. Du kan legge inn og slette tabletter rett i
+  kalenderpanelet i Home Assistant. Tittelen på en ny hendelse kan være et navn («Ida»).
+* **Etterregistrering:** `logg_klortablett` tar `tidspunkt:`, og innslaget havner på riktig
+  plass i tid.
+* **Ny tjeneste `slett_klortablett`** (`tid:`) fjerner ett innslag.
+* **Google Kalender (eller en annen):** velg den under *Kalender klorloggen også skal skrives
+  til*. Da skrives hver tablett også dit med `calendar.create_event`. Slettes et innslag,
+  prøver integrasjonen å slette hendelsen der også, men det virker bare hvis kalenderen lar
+  seg slette i. Loggen i integrasjonen er fasiten.
+
+---
+
 # KI Basseng 1.4.0
 
 ## Hvem la i klortabletten?

@@ -13,6 +13,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     EntitySelector,
     EntitySelectorConfig,
     NumberSelector,
@@ -25,7 +26,11 @@ from .const import (
     CONF_AREA,
     CONF_CLIMATE,
     CONF_COLLECTOR_AREA,
+    CONF_CALENDAR,
     CONF_COVER,
+    CONF_COVER_INVERT,
+    CONF_HEATERS,
+    CONF_HOUSE_SENSOR,
     CONF_CURRENCY,
     CONF_FLOW,
     CONF_HP_NOMINAL,
@@ -96,6 +101,7 @@ UTSTYR_SCHEMA = vol.Schema(
         vol.Optional(CONF_COVER): _entity(
             ["cover", "binary_sensor", "switch", "input_boolean"]
         ),
+        vol.Optional(CONF_COVER_INVERT, default=False): BooleanSelector(),
         vol.Optional(CONF_PRESENCE): _entity(
             [
                 "person",
@@ -108,6 +114,11 @@ UTSTYR_SCHEMA = vol.Schema(
             ],
             multiple=True,
         ),
+        vol.Optional(CONF_HOUSE_SENSOR): _entity("sensor", "temperature"),
+        vol.Optional(CONF_HEATERS): _entity(
+            ["switch", "input_boolean", "climate", "light"], multiple=True
+        ),
+        vol.Optional(CONF_CALENDAR): _entity("calendar"),
     }
 )
 
