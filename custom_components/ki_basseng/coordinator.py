@@ -41,6 +41,7 @@ from .const import (
     CONF_WEATHER,
     DEFAULT_AREA,
     DEFAULT_COLLECTOR_AREA,
+    DAILY_COUNTERS,
     DEFAULT_COUNTERS,
     DEFAULT_CURRENCY,
     DEFAULT_FLOW,
@@ -362,17 +363,24 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
                 self.counters["volume_today"],
                 self.counters["pump_kwh_today"],
             )
+        if self._day is not None:
+            # Legg gårsdagens målte besparelse til måneden og totalen før nullstilling
+            spart = self._savings()["measured"]
+            maaned = self._day[:7]
+            if self.counters.get("saved_month_key") != maaned:
+                self.counters["saved_month"] = 0.0
+                self.counters["saved_month_key"] = maaned
+            self.counters["saved_month"] += spart
+            self.counters["saved_total"] += spart
+            self.counters["saved_yesterday"] = spart
         self._day = today
-        for key in (
-            "volume_today",
-            "runtime_today",
-            "pump_kwh_today",
-            "hp_kwh_today",
-            "cost_today",
-            "cost_reference",
-            "sprinkler_today",
-        ):
+        for key in DAILY_COUNTERS:
             self.counters[key] = 0.0
+        if self.counters.get("saved_month_key") != today[:7]:
+            self.counters["saved_month"] = 0.0
+            self.counters["saved_month_key"] = today[:7]
+        # Fra nå av er tellerne med fra døgnets start, så oppdelingen er til å stole på
+        self.counters["split_day"] = today
         self._plan_signature = None
         self._save_pending = True
 
@@ -397,11 +405,15 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             self.counters["hp_kwh_today"] += hp_kwh
             if price is not None:
                 self.counters["cost_today"] += (pump_kwh + hp_kwh) * price
+                self.counters["pump_cost_today"] += pump_kwh * price
+                self.counters["hp_cost_today"] += hp_kwh * price
+                self.counters["pump_kwh_priced"] += pump_kwh
                 # Referanse: pumpen hadde gått hele døgnet, slik den gjorde før
                 baseline_kwh = (
                     _f(self.settings.get("pump_baseline"), 800) * dt_s / 3_600_000
                 )
                 self.counters["cost_reference"] += baseline_kwh * price
+                self.counters["ref_kwh_today"] += baseline_kwh
 
         return {"pump_w": pump_w, "hp_w": hp_w, "price": price, "dt_s": dt_s}
 
@@ -1030,6 +1042,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             self.learned["cop_samples"] = int(self.learned.get("cop_samples", 0)) + 1
 
         self._learn_loss(now, measured, air, covered, elevation, power)
+        self._count_cover(covered, temp, air, ghi, power)
 
         loss = pool.loss_w(temp, air, covered) if (temp is not None and air is not None) else None
         solar = pool.solar_w(ghi, covered, self.pump_on)
@@ -1049,6 +1062,24 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             if (air is not None and temp is not None)
             else None,
         }
+
+    def _count_cover(
+        self, covered: bool, temp: float | None, air: float | None, ghi: float, power: dict
+    ) -> None:
+        """Anslå hva pooltaket sparer: varmetapet det hindrer, minus solen det
+        stenger ute, regnet om til strøm med COP. Kan bli negativt en solrik dag."""
+        if not covered or self.winter or temp is None or air is None or not power["dt_s"]:
+            return
+        apen = self._pool(False)
+        tak = self._pool(True)
+        hindret = apen.loss_w(temp, air, False) - tak.loss_w(temp, air, True)
+        tapt_sol = apen.solar_w(ghi, False, self.pump_on) - tak.solar_w(ghi, True, self.pump_on)
+        kwh = (hindret - tapt_sol) * power["dt_s"] / 3_600_000 / max(tak.cop(air, temp), 1.0)
+        self.counters["cover_kwh_today"] = self.counters.get("cover_kwh_today", 0.0) + kwh
+        if power["price"] is not None:
+            self.counters["cover_cost_today"] = (
+                self.counters.get("cover_cost_today", 0.0) + kwh * power["price"]
+            )
 
     def _learn_loss(
         self,
@@ -1179,6 +1210,15 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         state = self.hass.states.get(climate)
         if active:
             self._setback_on = True
+            # Anslaget for natta føres på dagen senkingen starter. Det er det
+            # modellen regnet ut da den valgte vinduet; natta selv regnes ikke om.
+            self.counters["setback_kwh_today"] = self.counters.get("setback_kwh_today", 0.0) + max(
+                0.0, _f(self._setback.saving_kwh, 0.0)
+            )
+            self.counters["setback_cost_today"] = self.counters.get("setback_cost_today", 0.0) + max(
+                0.0, _f(self._setback.saving_cost, 0.0)
+            )
+            self._save_pending = True
             if state is not None and state.state not in UNKNOWN and state.state != "off":
                 self._hp_target = _f(state.attributes.get("temperature"), None)
                 await self.hass.services.async_call(
@@ -1562,16 +1602,10 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         await self.async_request_refresh()
 
     async def async_reset_daily(self) -> None:
-        for key in (
-            "volume_today",
-            "runtime_today",
-            "pump_kwh_today",
-            "hp_kwh_today",
-            "cost_today",
-            "cost_reference",
-            "sprinkler_today",
-        ):
+        for key in DAILY_COUNTERS:
             self.counters[key] = 0.0
+        # Alt står på null samtidig, så oppdelingen er gyldig fra nå
+        self.counters["split_day"] = self._day or ""
         self._plan_signature = None
         await self.async_persist()
         await self.async_request_refresh()
@@ -1715,6 +1749,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             "saved_today": round(
                 self.counters["cost_reference"] - self._pump_cost_today(), 2
             ),
+            "savings": self._savings(),
             "price_now": power["price"],
             "price_plan_avg": snitt_plan,
             "price_day_avg": snitt_dogn,
@@ -1784,8 +1819,63 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
 
     def _pump_cost_today(self) -> float:
         """Hva pumpen faktisk har kostet i dag, til bruk i besparelsen."""
+        if self.counters.get("split_day") == self._day:
+            return self.counters["pump_cost_today"]
+        # Dagen integrasjonen ble oppdatert: pumpekostnaden ble ikke ført for seg,
+        # så den anslås som pumpas andel av strømmen
         total_kwh = self.counters["pump_kwh_today"] + self.counters["hp_kwh_today"]
         if total_kwh <= 0:
             return 0.0
         andel = self.counters["pump_kwh_today"] / total_kwh
         return self.counters["cost_today"] * andel
+
+    def _savings(self) -> dict:
+        """«Spart i dag», delt opp.
+
+        Den målte besparelsen er hva pumpa ville kostet i døgndrift minus hva den
+        faktisk kostet. Den deles i to som går nøyaktig opp:
+
+        · mengde: kWh pumpa slapp å bruke, ganget med snittprisen så langt i døgnet
+        · timing: at timene den gikk var billigere enn snittet (prisstyringen)
+
+        Nattsenkingen og pooltaket er anslag fra varmemodellen og holdes utenfor det
+        målte tallet. Nattsenkingen er KI-ens fortjeneste; taket er ikke, men det er
+        verdt å se hva det gjør.
+        """
+        c = self.counters
+        measured = c["cost_reference"] - self._pump_cost_today()
+        baseline_kw = max(_f(self.settings.get("pump_baseline"), 800) / 1000, 0.001)
+        out: dict = {
+            "measured": round(measured, 2),
+            "month": round(c.get("saved_month", 0.0) + measured, 2),
+            "total": round(c.get("saved_total", 0.0) + measured, 2),
+            "yesterday": round(c.get("saved_yesterday", 0.0), 2),
+            "setback_kwh": round(c.get("setback_kwh_today", 0.0), 2),
+            "setback_cost": round(c.get("setback_cost_today", 0.0), 2),
+            "cover_kwh": round(c.get("cover_kwh_today", 0.0), 2),
+            "cover_cost": round(c.get("cover_cost_today", 0.0), 2),
+            "runtime_h": round(c["runtime_today"] / 3600, 2),
+            "split": c.get("split_day") == self._day,
+        }
+        out["with_setback"] = round(measured + out["setback_cost"], 2)
+        ref_kwh = c.get("ref_kwh_today", 0.0)
+        if out["split"] and ref_kwh > 0:
+            snitt = c["cost_reference"] / ref_kwh
+            spart_kwh = ref_kwh - c.get("pump_kwh_priced", 0.0)
+            mengde = spart_kwh * snitt
+            brukt = c.get("pump_kwh_priced", 0.0)
+            out.update(
+                {
+                    "hours_ref": round(ref_kwh / baseline_kw, 2),
+                    "kwh_saved": round(spart_kwh, 2),
+                    "amount_cost": round(mengde, 2),
+                    "timing_cost": round(measured - mengde, 2),
+                    "avg_price": round(snitt, 3),
+                    "pump_avg_price": round(c["pump_cost_today"] / brukt, 3) if brukt > 0.01 else None,
+                    "without_ki": round(
+                        c["cost_reference"] + c.get("hp_cost_today", 0.0) + out["setback_cost"], 2
+                    ),
+                    "with_ki": round(c["pump_cost_today"] + c.get("hp_cost_today", 0.0), 2),
+                }
+            )
+        return out

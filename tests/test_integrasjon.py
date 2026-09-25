@@ -380,3 +380,76 @@ async def test_klor_etterregistrering_sletting_og_kalender(hass, oppsett):
     await hass.services.async_call(
         DOMAIN, "slett_klortablett", {"tid": k.chlorine[1]["tid"]}, blocking=True)
     assert [r["hvem"] for r in k.chlorine] == ["Ida", "Ida"]
+
+
+async def test_spart_i_dag_deles_i_mengde_og_timing(hass, oppsett):
+    """Mengde + timing skal gå nøyaktig opp i den målte besparelsen."""
+    k, _ = oppsett
+    c = k.counters
+    c.update(split_day=k._day, cost_reference=10.0, ref_kwh_today=12.0,
+             pump_kwh_priced=3.0, pump_cost_today=1.5, hp_cost_today=4.0,
+             setback_kwh_today=1.2, setback_cost_today=0.8)
+    s = k._savings()
+    assert s["measured"] == 8.5
+    assert s["kwh_saved"] == 9.0
+    assert round(s["amount_cost"] + s["timing_cost"], 2) == s["measured"]
+    assert s["timing_cost"] == 1.0, "pumpa betalte 0,50 mot snittet 0,83"
+    assert s["with_setback"] == 9.3
+    assert s["without_ki"] == 14.8 and s["with_ki"] == 5.5
+
+
+async def test_spart_regnes_fra_tellerne(hass, oppsett):
+    """Pumpa går ett minutt og står ett minutt, med pris 2 kr: da er halve
+    referansen spart, og ingenting av det skyldes billigere timer."""
+    k, _ = oppsett
+    k.entry.update_listeners.clear()
+    hass.config_entries.async_update_entry(k.entry, options={"price_sensor": "sensor.pris"})
+    hass.states.async_set("sensor.pris", "2.0")
+    for key in ("cost_reference", "ref_kwh_today", "pump_kwh_priced", "pump_cost_today",
+                "hp_cost_today", "pump_kwh_today", "hp_kwh_today", "cost_today"):
+        k.counters[key] = 0.0
+    k.counters["split_day"] = k._day
+    naa = dt_util.now()
+    k._pump_state = True
+    k._last_tick = naa - timedelta(seconds=60)
+    k._accumulate(naa)
+    k._pump_state = False
+    k._last_tick = naa
+    k._accumulate(naa + timedelta(seconds=60))
+    s = k._savings()
+    assert abs(s["measured"] - 0.8 * 2 / 60) < 0.006, "tallene er avrundet til øre"
+    assert abs(s["timing_cost"]) < 0.006
+    assert abs(k.counters["cost_reference"] - k.counters["pump_cost_today"] - 0.8 * 2 / 60) < 1e-9
+
+
+async def test_dognskiftet_legger_besparelsen_til_maaned_og_total(hass, oppsett):
+    k, _ = oppsett
+    igaar = (dt_util.now() - timedelta(days=1)).date().isoformat()
+    k._day = igaar
+    k.counters.update(split_day=igaar, cost_reference=5.0, pump_cost_today=0.0,
+                      saved_total=10.0, saved_month=3.0, saved_month_key=igaar[:7])
+    k._roll_day(dt_util.now())
+    assert k.counters["saved_yesterday"] == 5.0
+    assert k.counters["saved_total"] == 15.0
+    samme_maaned = igaar[:7] == dt_util.now().date().isoformat()[:7]
+    assert k.counters["saved_month"] == (8.0 if samme_maaned else 0.0)
+    assert k.counters["cost_reference"] == 0.0 and k.counters["split_day"] == k._day
+
+
+async def test_nattsenking_og_pooltak_anslas(hass, oppsett):
+    k, _ = oppsett
+    naa = dt_util.now()
+    k._setback_on = False
+    k._setback_ended = None
+    k.counters["setback_kwh_today"] = 0.0
+    k.counters["setback_cost_today"] = 0.0
+    k._setback = termisk.SetbackDecision(True, naa - timedelta(minutes=1), naa + timedelta(hours=3),
+                                         saving_kwh=1.2, saving_cost=0.8)
+    await k._guard_setback(naa)
+    assert k.counters["setback_kwh_today"] == 1.2 and k.counters["setback_cost_today"] == 0.8
+
+    k.counters["cover_kwh_today"] = 0.0
+    k._count_cover(True, 27.0, 14.0, 0.0, {"dt_s": 3600, "price": 1.0, "pump_w": 0, "hp_w": 0})
+    assert k.counters["cover_kwh_today"] > 0.5, "taket hindrer varmetap om natta"
+    k._count_cover(False, 27.0, 14.0, 0.0, {"dt_s": 3600, "price": 1.0, "pump_w": 0, "hp_w": 0})
+    assert k.counters["cover_cost_today"] == k.counters["cover_kwh_today"], "ingenting når taket er av"

@@ -1,3 +1,31 @@
+# KI Basseng 1.6.0
+
+## Hva «spart i dag» består av
+
+*Spart i dag* er fortsatt det målte tallet: hva pumpa ville kostet i døgndrift, minus hva
+den faktisk kostet. Nå står det i attributtene hva tallet består av. De to første går
+nøyaktig opp i det målte:
+
+| Attributt | Hva |
+|---|---|
+| `sirkulasjon_kwh`, `sirkulasjon_kr` | Færre pumpetimer: kWh pumpa slapp å bruke, ganget med snittprisen så langt i døgnet |
+| `billigere_timer_kr` | Prisstyringen: at timene pumpa gikk var billigere enn snittet |
+| `snittpris_pumpe`, `snittpris_dogn_sa_langt` | Hva pumpa betalte per kWh, mot snittet |
+| `pumpetimer`, `timer_med_pris` | Timer pumpa gikk, av timene med kjent pris |
+| `nattsenking_kwh_anslatt`, `nattsenking_kr_anslatt` | Det modellen regnet ut da den valgte nattens av-vindu |
+| `med_nattsenking_kr` | Det målte pluss anslaget for nattsenkingen |
+| `pooltak_kwh_anslatt`, `pooltak_kr_anslatt` | Varmetapet taket hindret, minus solen det stengte ute, i strøm (kan være negativt en solrik dag) |
+| `uten_ki_kr`, `med_ki_kr` | Pumpe i døgndrift + varmepumpe + det nattsenkingen sparte, mot det som faktisk ble brukt |
+| `i_gar`, `denne_maneden`, `totalt` | Målt besparelse bakover i tid |
+
+Anslagene fra varmemodellen (nattsenking og pooltak) holdes utenfor det målte tallet.
+Pooltaket er ikke KI-ens fortjeneste, men det er verdt å se hva det gjør.
+
+Dagen integrasjonen oppdateres, startet de nye tellerne midt i døgnet. Oppdelingen vises
+derfor fra neste døgn. Det målte tallet er som før hele tiden.
+
+---
+
 # KI Basseng 1.5.0
 
 ## Den varmet ikke om morgenen – rettet
