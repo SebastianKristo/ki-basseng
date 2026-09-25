@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "ki_basseng"
 NAME = "KI Basseng"
-VERSION = "1.8.0"
+VERSION = "1.9.0"
 STORAGE_VERSION = 1
 
 PLATFORMS: list[Platform] = [
@@ -120,6 +120,7 @@ DEFAULT_SETTINGS: dict = {
     "fill_max_minutes": 60,
     "auto_fill": False,
     "level_notify": True,
+    "chlorine_notify": True,
     # brytere
     "auto": True,
     "price_control": True,

@@ -90,6 +90,40 @@ def _level_attrs(d: dict) -> dict:
     }
 
 
+def _klor_attrs(d: dict) -> dict:
+    """Trenger det klor, og hvor lenge til: for automasjoner og kort."""
+    k = d.get("chlorine") or {}
+    neste = k.get("next")
+    now = d.get("now")
+    timer = None
+    if neste is not None and now is not None:
+        timer = round((neste - now).total_seconds() / 3600, 1)
+    trenger = bool(k.get("due"))
+    if timer is None:
+        tekst = "Ingen klortablett logget"
+    elif timer <= 0:
+        over = -timer / 24
+        tekst = "I dag" if over < 1 else f"{over:.0f} {'dag' if round(over) == 1 else 'dager'} på overtid"
+    elif timer < 24:
+        tekst = f"Om {timer:.0f} t"
+    else:
+        tekst = f"Om {timer / 24:.0f} {'dag' if round(timer / 24) == 1 else 'dager'}"
+    return {
+        "trenger_klor": trenger,
+        "tekst": tekst,
+        "neste": neste,
+        "timer_til": max(0.0, timer) if timer is not None else None,
+        "dager_til": round(max(0.0, timer) / 24, 1) if timer is not None else None,
+        "overtid_dager": round(max(0.0, -timer) / 24, 1) if timer is not None else None,
+        "dager_siden": k.get("days_since"),
+        "intervall_dager": k.get("interval_days"),
+        "siste": k.get("last"),
+    }
+
+
+KLOR_STATES = ["trenger_klor", "ok"]
+
+
 LEVEL_STATES = ["ok", "torr", "lav", "fyller", "stoppet", "ukjent"]
 
 
@@ -410,6 +444,15 @@ SENSORS: tuple[KiSensorDescription, ...] = (
         level=True,
         value=lambda d, c: (d.get("level") or {}).get("state"),
         attrs=lambda d, c: _level_attrs(d),
+    ),
+    KiSensorDescription(
+        key="klorstatus",
+        name="Klorstatus",
+        icon="mdi:pill",
+        device_class=SensorDeviceClass.ENUM,
+        options=KLOR_STATES,
+        value=lambda d, c: "trenger_klor" if (d.get("chlorine") or {}).get("due") else "ok",
+        attrs=lambda d, c: _klor_attrs(d),
     ),
 )
 

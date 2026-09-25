@@ -30,7 +30,7 @@
           "calendar_entity": "Calendar the chlorine log is also written to (e.g. Google)",
           "level_sensor": "Water sensor in the pool (wet = enough water)",
           "fill_valve": "Fill valve (empty = the main valve above)",
-          "notify_services": "Notify with (e.g. notify.mobile_app_iphone, comma separated)"
+          "notify_services": "Phones that get notifications (water level and chlorine)"
         }
       },
       "basseng": {
@@ -88,7 +88,7 @@
           "calendar_entity": "Calendar the chlorine log is also written to (e.g. Google)",
           "level_sensor": "Water sensor in the pool (wet = enough water)",
           "fill_valve": "Fill valve (empty = the main valve above)",
-          "notify_services": "Notify with (e.g. notify.mobile_app_iphone, comma separated)"
+          "notify_services": "Phones that get notifications (water level and chlorine)"
         }
       },
       "basseng": {
