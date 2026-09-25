@@ -19,6 +19,7 @@ from .entity import KiBassengEntity
 @dataclass(frozen=True, kw_only=True)
 class KiSwitchDescription(SwitchEntityDescription):
     setting: str
+    level: bool = False
 
 
 SWITCHES: tuple[KiSwitchDescription, ...] = (
@@ -100,6 +101,21 @@ SWITCHES: tuple[KiSwitchDescription, ...] = (
         setting="winter_mode",
     ),
     KiSwitchDescription(
+        key="automatisk_pafylling",
+        name="Automatisk påfylling",
+        icon="mdi:water-plus",
+        setting="auto_fill",
+        level=True,
+    ),
+    KiSwitchDescription(
+        key="varsle_om_vanniva",
+        name="Varsle om vannivå",
+        icon="mdi:bell-ring-outline",
+        setting="level_notify",
+        level=True,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiSwitchDescription(
         key="frostvakt",
         name="Frostvakt",
         icon="mdi:snowflake-alert",
@@ -113,7 +129,9 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: KiBassengCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(KiBassengSwitch(coordinator, d) for d in SWITCHES)
+    async_add_entities(
+        KiBassengSwitch(coordinator, d) for d in SWITCHES if not d.level or coordinator.has_level
+    )
 
 
 class KiBassengSwitch(KiBassengEntity, SwitchEntity):

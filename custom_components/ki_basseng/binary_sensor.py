@@ -23,6 +23,7 @@ from .entity import KiBassengEntity
 class KiBinaryDescription(BinarySensorEntityDescription):
     value: Callable[[dict], bool | None]
     attrs: Callable[[dict], dict] | None = None
+    level: bool = False
 
 
 BINARY_SENSORS: tuple[KiBinaryDescription, ...] = (
@@ -96,6 +97,19 @@ BINARY_SENSORS: tuple[KiBinaryDescription, ...] = (
         },
     ),
     KiBinaryDescription(
+        key="bassenget_trenger_vann",
+        name="Bassenget trenger vann",
+        icon="mdi:water-alert",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        level=True,
+        value=lambda d: (d.get("level") or {}).get("state") in ("lav", "fyller", "stoppet"),
+        attrs=lambda d: {
+            "status": (d.get("level") or {}).get("state"),
+            "torr_min": (d.get("level") or {}).get("dry_minutes"),
+            "fyller": (d.get("level") or {}).get("filling"),
+        },
+    ),
+    KiBinaryDescription(
         key="varmepumpe_venter",
         name="Varmepumpe venter",
         icon="mdi:heat-pump-outline",
@@ -108,7 +122,10 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: KiBassengCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(KiBassengBinarySensor(coordinator, d) for d in BINARY_SENSORS)
+    async_add_entities(
+        KiBassengBinarySensor(coordinator, d) for d in BINARY_SENSORS
+        if not d.level or coordinator.has_level
+    )
 
 
 class KiBassengBinarySensor(KiBassengEntity, BinarySensorEntity):

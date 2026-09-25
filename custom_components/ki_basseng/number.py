@@ -28,6 +28,7 @@ from .entity import KiBassengEntity
 @dataclass(frozen=True, kw_only=True)
 class KiNumberDescription(NumberEntityDescription):
     setting: str
+    level: bool = False
 
 
 NUMBERS: tuple[KiNumberDescription, ...] = (
@@ -258,6 +259,32 @@ NUMBERS: tuple[KiNumberDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.MINUTES,
         entity_category=EntityCategory.CONFIG,
     ),
+    KiNumberDescription(
+        key="torr_for_varsel",
+        name="Tørr før varsel",
+        icon="mdi:timer-sand",
+        setting="level_dry_minutes",
+        level=True,
+        native_min_value=5,
+        native_max_value=240,
+        native_step=5,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiNumberDescription(
+        key="maks_pafylling",
+        name="Maks påfylling",
+        icon="mdi:timer-lock-outline",
+        setting="fill_max_minutes",
+        level=True,
+        native_min_value=5,
+        native_max_value=480,
+        native_step=5,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+    ),
 )
 
 
@@ -265,7 +292,9 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: KiBassengCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(KiBassengNumber(coordinator, d) for d in NUMBERS)
+    async_add_entities(
+        KiBassengNumber(coordinator, d) for d in NUMBERS if not d.level or coordinator.has_level
+    )
 
 
 class KiBassengNumber(KiBassengEntity, NumberEntity):
