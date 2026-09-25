@@ -19,9 +19,13 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
 )
 
+from .coordinator import split_names
 from .const import (
     CONF_AREA,
     CONF_CLIMATE,
@@ -125,9 +129,40 @@ UTSTYR_SCHEMA = vol.Schema(
         # Vannivå: vannsensor i bassenget (våt = nok vann), ventil og varsling
         vol.Optional(CONF_LEVEL_SENSOR): _entity(["binary_sensor", "input_boolean"]),
         vol.Optional(CONF_FILL_VALVE): _entity(["switch", "valve", "input_boolean"]),
-        vol.Optional(CONF_NOTIFY): TextSelector(),
     }
 )
+
+
+def _mobiler(hass: Any, valgt: Any = None) -> list[dict[str, str]]:
+    """Varslingstjenestene som finnes, mobilene først: notify.mobile_app_* med navn."""
+    tjenester = sorted((hass.services.async_services().get("notify") or {}).keys())
+    ut = []
+    for navn in sorted(tjenester, key=lambda n: (not n.startswith("mobile_app_"), n)):
+        if navn in ("notify", "persistent_notification", "send_message"):
+            continue
+        pen = navn.removeprefix("mobile_app_").replace("_", " ").strip().capitalize()
+        ut.append({"value": f"notify.{navn}", "label": pen if navn.startswith("mobile_app_") else f"notify.{navn}"})
+    # Det som alt er valgt, skal stå i lista selv om tjenesten er borte nå
+    for verdi in split_names(valgt) if isinstance(valgt, str) else (valgt or []):
+        if not any(o["value"] == verdi for o in ut):
+            ut.append({"value": verdi, "label": verdi})
+    return ut
+
+
+def _utstyr_schema(hass: Any, valgt: Any = None) -> vol.Schema:
+    """Utstyr, med varslingsmottakerne som en meny over mobilene som finnes."""
+    return UTSTYR_SCHEMA.extend(
+        {
+            vol.Optional(CONF_NOTIFY): SelectSelector(
+                SelectSelectorConfig(
+                    options=_mobiler(hass, valgt),
+                    multiple=True,
+                    custom_value=True,
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            ),
+        }
+    )
 
 
 def _basseng_schema(defaults: dict[str, Any]) -> vol.Schema:
@@ -183,7 +218,7 @@ class KiBassengConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._data.update(user_input)
             return await self.async_step_basseng()
-        return self.async_show_form(step_id="utstyr", data_schema=UTSTYR_SCHEMA)
+        return self.async_show_form(step_id="utstyr", data_schema=_utstyr_schema(self.hass))
 
     async def async_step_basseng(
         self, user_input: dict[str, Any] | None = None
@@ -225,10 +260,12 @@ class KiBassengOptionsFlow(OptionsFlow):
         fields: dict[Any, Any] = {}
         for key, value in schema.schema.items():
             name = str(key)
-            if name in current and current[name] not in (None, ""):
-                fields[
-                    vol.Optional(name, default=current[name])
-                ] = value
+            if name in current and current[name] not in (None, "", []):
+                verdi = current[name]
+                # Varslingen var fritekst før 1.9; menyen vil ha en liste
+                if name == CONF_NOTIFY and isinstance(verdi, str):
+                    verdi = split_names(verdi)
+                fields[vol.Optional(name, default=verdi)] = value
             else:
                 fields[vol.Optional(name)] = value
         return vol.Schema(fields)
@@ -251,8 +288,10 @@ class KiBassengOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         if user_input is not None:
             return await self._save(user_input)
+        valgt = self._current.get(CONF_NOTIFY)
         return self.async_show_form(
-            step_id="utstyr", data_schema=self._with_defaults(UTSTYR_SCHEMA)
+            step_id="utstyr",
+            data_schema=self._with_defaults(_utstyr_schema(self.hass, valgt)),
         )
 
     async def async_step_basseng(

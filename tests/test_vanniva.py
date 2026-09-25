@@ -124,3 +124,31 @@ async def test_manuell_fylling_nekter_nar_fullt(hass):
     await k.async_start_fill()
     assert not kall["pa"]
     assert "fullt" in k._level_reason
+
+
+async def test_mobiler_som_liste_og_klorvarsel(hass):
+    """Mobilene velges i en meny (liste); klor varsles én gang når det er på tide."""
+    k, kall = await _oppsett(hass)
+    k.entry.update_listeners.clear()
+    hass.config_entries.async_update_entry(k.entry, options={"notify_services": ["notify.mobil"]})
+    assert k._notify_targets() == ["notify.mobil"]
+    await k.async_log_chlorine(1, when=dt_util.now() - timedelta(days=20))
+    await k.async_refresh()
+    await k.async_refresh()
+    klor = [c for c in kall["mobil"] if "klor" in c.data["title"].lower()]
+    assert len(klor) == 1
+    status = hass.states.get("sensor.ki_basseng_klorstatus")
+    assert status.state == "trenger_klor"
+    assert status.attributes["trenger_klor"] is True
+    assert status.attributes["overtid_dager"] > 0
+    assert "overtid" in status.attributes["tekst"]
+
+
+async def test_klorstatus_ok_med_tid_til(hass):
+    k, _ = await _oppsett(hass, med_sensor=False)
+    await k.async_log_chlorine(1)
+    await k.async_refresh()
+    status = hass.states.get("sensor.ki_basseng_klorstatus")
+    assert status.state == "ok"
+    assert 6 < status.attributes["dager_til"] <= 7
+    assert status.attributes["tekst"].startswith("Om")

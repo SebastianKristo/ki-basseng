@@ -140,6 +140,11 @@ i tabletter. Skriv navnene i husstanden i *Navn i klorloggen* («Sebastian, Ida�
 du huke av hvem som la i. Navnet kommer med i loggen, og tjenesten tar det som `hvem:`. Integrasjonen husker de 50 siste innslagene med tid, antall, notat
 og vanntemperatur, og skriver i loggboka.
 
+*Klorstatus* er `trenger_klor` eller `ok`, med `tekst` («Om 3 dager», «I dag», «2 dager på
+overtid»), `neste`, `timer_til`, `dager_til`, `overtid_dager`, `dager_siden` og
+`intervall_dager` som attributter. Når det blir på tide, varsles mobilene valgt under Utstyr
+én gang (bryteren *Varsle om klor*), og hendelsen `ki_basseng_klor` sendes.
+
 *Neste klortablett* regnes ut fra intervallet (7 dager som standard). Intervallet
 blir kortere i varmt vann, fordi klor forbrukes raskere over 24 °C. Ved 32 °C er
 det halvert. *Klortablett bør legges i* slår seg på når det er på tide.
@@ -153,7 +158,7 @@ ingen av entitetene under, og kortet viser ikke vannivået.
 - **Våt:** bassenget har nok vann.
 - **Tørr i *Tørr før varsel*** (45 min, kan settes 5–240): *Bassenget trenger vann* slår
   seg på, og det varsles én gang – i Home Assistant, med tjenestene under *Varsle med*
-  (f.eks. `notify.mobile_app_iphone`) og som hendelsen `ki_basseng_vanniva`. Ventetiden
+  (mobilene du velger i menyen under Utstyr) og som hendelsen `ki_basseng_vanniva`. Ventetiden
   gjør at bølger og badegjester ikke gir falsk alarm.
 - **Automatisk påfylling** (av som standard) åpner ventilen – egen påfyllingsventil, eller
   hovedkranen sprederen bruker – og stenger den når sensoren er våt igjen. *Maks påfylling*

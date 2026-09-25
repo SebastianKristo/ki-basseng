@@ -361,6 +361,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
         await self._apply(mode, desired, now)
         await self._handle_sprinkler(now)
         await self._handle_level(now)
+        await self._handle_chlorine_notify(now)
         await self._guard_winter(now)
         await self._guard_setback(now)
         await self._guard_heatpump(now)
@@ -1807,6 +1808,35 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             await self._notify_level("Bassenget er fylt opp", f"Fylte i {minutter:.0f} min.", "ok")
         self.async_update_listeners()
 
+    def _notify_targets(self) -> list[str]:
+        """Mobilene (notify-tjenestene) valgt under Utstyr. Fritekst fra 1.8 går også."""
+        verdi = self.cfg(CONF_NOTIFY) or []
+        return split_names(verdi) if isinstance(verdi, str) else [str(v) for v in verdi if v]
+
+    async def _handle_chlorine_notify(self, now: datetime) -> None:
+        """Varsle én gang når det blir på tide med klortablett."""
+        info = self._chlorine_info(now)
+        if not info["due"] or not self.chlorine:
+            return
+        nokkel = str(info["next"])
+        if self.counters.get("chlorine_notified") == nokkel:
+            return
+        self.counters["chlorine_notified"] = nokkel
+        self._save_pending = True
+        dager = info.get("days_since")
+        self.hass.bus.async_fire(f"{DOMAIN}_klor", {"dager_siden": dager, "neste": nokkel})
+        if not self.settings.get("chlorine_notify"):
+            return
+        melding = f"Det er {dager:.0f} dager siden sist." if dager is not None else "Ingen klortablett er logget."
+        for tjeneste in self._notify_targets():
+            domain, _, name = tjeneste.partition(".")
+            if not name:
+                domain, name = "notify", domain
+            if self.hass.services.has_service(domain, name):
+                await self.hass.services.async_call(
+                    domain, name, {"title": "På tide med klortablett", "message": melding}, blocking=False
+                )
+
     async def _notify_level(self, title: str, message: str, kind: str) -> None:
         """Varsel om vannivået: hendelse alltid, varsler når «Varsle om vannivå» er på."""
         self.hass.bus.async_fire(
@@ -1826,7 +1856,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
                     "persistent_notification", "dismiss",
                     {"notification_id": f"{DOMAIN}_vanniva"}, blocking=False,
                 )
-        for tjeneste in split_names(self.cfg(CONF_NOTIFY) or ""):
+        for tjeneste in self._notify_targets():
             domain, _, name = tjeneste.partition(".")
             if not name:
                 domain, name = "notify", domain
@@ -2052,6 +2082,7 @@ class KiBassengCoordinator(DataUpdateCoordinator[dict]):
             and now < self._override_until,
             "boost_until": self._boost_until,
             "level": self._level_snapshot(now),
+            "now": now,
             "sprinkler_running": self.sprinkler_running,
             "sprinkler_left": round(self.sprinkler_left, 1),
             "sprinkler_today": round(self.counters["sprinkler_today"], 1),

@@ -1,3 +1,29 @@
+# KI Basseng 1.9.0
+
+## Velg mobilene som får varsel
+
+*Varsle med* under Utstyr er nå en meny over varslingstjenestene som finnes, med mobilene
+(`notify.mobile_app_*`) først og med navn. Velg én eller flere. Det som var skrevet inn som
+tekst i 1.8, gjelder fortsatt og står valgt i menyen.
+
+## Klorstatus
+
+Ny sensor *Klorstatus*: `trenger_klor` eller `ok`, med hvor lenge til som attributter:
+
+| Attributt | Hva |
+|---|---|
+| `trenger_klor` | Om det er på tide |
+| `tekst` | «Om 3 dager», «Om 5 t», «I dag», «2 dager på overtid» |
+| `neste`, `siste` | Neste og siste klortablett |
+| `timer_til`, `dager_til` | Tid til neste (0 når det er på tide) |
+| `overtid_dager` | Hvor lenge det har vært på tide |
+| `dager_siden`, `intervall_dager` | Siden sist, og intervallet (kortere i varmt vann) |
+
+Når det blir på tide, varsles mobilene én gang per tablett (bryteren *Varsle om klor*, på som
+standard), og hendelsen `ki_basseng_klor` sendes.
+
+---
+
 # KI Basseng 1.8.0
 
 ## Vannivå med varsel og automatisk påfylling

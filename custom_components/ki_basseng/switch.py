@@ -116,6 +116,13 @@ SWITCHES: tuple[KiSwitchDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
     ),
     KiSwitchDescription(
+        key="varsle_om_klor",
+        name="Varsle om klor",
+        icon="mdi:bell-ring-outline",
+        setting="chlorine_notify",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    KiSwitchDescription(
         key="frostvakt",
         name="Frostvakt",
         icon="mdi:snowflake-alert",
